@@ -387,6 +387,11 @@
 				<div id="autoScore" class="score">0</div>
 			</div>
 
+			<div class="score-box">
+				<span class="label">Rebirths</span>
+				<div id="rebirthCount" class="score">0</div>
+			</div>
+
 			<div class="player-actions">
 				<span id="playerName" class="player-name"></span>
 				<button id="changePlayer" class="topbar-btn" type="button">Change player</button>
@@ -433,6 +438,17 @@
 					<button class="buy-btn" id="buyOffline">Buy</button>
 				</div>
 			</div>
+
+			<div class="shop-item">
+				<div>
+					<h3>Rebirth</h3>
+					<p>Reset points and all Cursor, Auto, and Offline Clicker upgrades. Keep rebirths and gain +1x permanent earnings. Current multiplier: <span id="rebirthMultiplier">x1</span>.</p>
+				</div>
+				<div class="shop-row">
+					<span class="cost" id="rebirthCost">100,000,000</span>
+					<button class="buy-btn" id="buyRebirth" disabled>Rebirth</button>
+				</div>
+			</div>
 		</div>
 	</div>
 
@@ -454,9 +470,9 @@
 				<h2 id="leaderboardTitle">Top 100</h2>
 				<button id="closeLeaderboard" class="dialog-btn" type="button">Close</button>
 			</div>
-			<p>Scores saved in this browser.</p>
+			<p id="leaderboardStatus">Scores saved in this browser. Configure Supabase to share scores online.</p>
 			<table class="leaderboard-table">
-				<thead><tr><th>Rank</th><th>Username</th><th>Points</th></tr></thead>
+				<thead><tr><th>Rank</th><th>Username</th><th>Rebirths</th><th>Points</th></tr></thead>
 				<tbody id="leaderboardRows"></tbody>
 			</table>
 		</section>
@@ -479,11 +495,15 @@
 		const buyCursorBtn = document.getElementById("buyCursor");
 		const buyAutoBtn = document.getElementById("buyAuto");
 		const buyOfflineBtn = document.getElementById("buyOffline");
+		const buyRebirthBtn = document.getElementById("buyRebirth");
 
 		const cursorCostEl = document.getElementById("cursorCost");
 		const autoCostEl = document.getElementById("autoCost");
 		const offlineCostEl = document.getElementById("offlineCost");
 		const offlineRateEl = document.getElementById("offlineRate");
+		const rebirthCostEl = document.getElementById("rebirthCost");
+		const rebirthCountEl = document.getElementById("rebirthCount");
+		const rebirthMultiplierEl = document.getElementById("rebirthMultiplier");
 		const playerNameEl = document.getElementById("playerName");
 		const offlineSummaryEl = document.getElementById("offlineSummary");
 		const shopEl = document.getElementById("shop");
@@ -494,6 +514,7 @@
 		const loginError = document.getElementById("loginError");
 		const leaderboardOverlay = document.getElementById("leaderboardOverlay");
 		const leaderboardRows = document.getElementById("leaderboardRows");
+		const leaderboardStatus = document.getElementById("leaderboardStatus");
 		const commandPanel = document.getElementById("commandPanel");
 		const commandForm = document.getElementById("commandForm");
 		const commandInput = document.getElementById("commandInput");
@@ -510,13 +531,19 @@
 		let autoCost = 25;
 		let offlineClick = 0;
 		let offlineCost = 100;
+		let rebirthCount = 0;
 		let lastSeenAt = Date.now();
 		let currentUsername = "";
 		let players = {};
+		let onlineSaveTimer = null;
 
 		const STORAGE_KEY = "clickerGameSave";
 		const PLAYERS_STORAGE_KEY = "clickerGamePlayers";
 		const ACTIVE_USERNAME_STORAGE_KEY = "clickerGameActiveUsername";
+		const SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co";
+		const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+		const FIRST_REBIRTH_COST = 100000000;
+		const REBIRTH_COST_STEP = 100000000;
 
 		function getDefaultState() {
 			return {
@@ -529,6 +556,7 @@
 				autoCost: 25,
 				offlineClick: 0,
 				offlineCost: 100,
+				rebirthCount: 0,
 				lastSeenAt: Date.now(),
 			};
 		}
@@ -545,7 +573,16 @@
 			autoCost = valueOrDefault(savedData.autoCost, defaults.autoCost);
 			offlineClick = valueOrDefault(savedData.offlineClick, defaults.offlineClick);
 			offlineCost = valueOrDefault(savedData.offlineCost, defaults.offlineCost);
+			rebirthCount = valueOrDefault(savedData.rebirthCount, defaults.rebirthCount);
 			lastSeenAt = valueOrDefault(savedData.lastSeenAt, Date.now());
+		}
+
+		function getEarningMultiplier() {
+			return rebirthCount + 1;
+		}
+
+		function getRebirthCost() {
+			return FIRST_REBIRTH_COST + rebirthCount * REBIRTH_COST_STEP;
 		}
 
 		function loadPlayers() {
@@ -559,6 +596,56 @@
 			}
 		}
 
+		function isSharedLeaderboardConfigured() {
+			return SUPABASE_URL.startsWith("https://") &&
+				!SUPABASE_URL.includes("YOUR_PROJECT_ID") &&
+				SUPABASE_ANON_KEY &&
+				!SUPABASE_ANON_KEY.includes("YOUR_SUPABASE_ANON_KEY");
+		}
+
+		function getSupabaseHeaders(prefer = "") {
+			const headers = {
+				apikey: SUPABASE_ANON_KEY,
+				Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+				"Content-Type": "application/json",
+			};
+			if (prefer) headers.Prefer = prefer;
+			return headers;
+		}
+
+		async function saveOnlineScore() {
+			if (!isSharedLeaderboardConfigured() || !currentUsername) return;
+			clearTimeout(onlineSaveTimer);
+			onlineSaveTimer = null;
+			const response = await fetch(`${SUPABASE_URL}/rest/v1/clicker_leaderboard?on_conflict=username_key`, {
+				method: "POST",
+				headers: getSupabaseHeaders("resolution=merge-duplicates,return=minimal"),
+				body: JSON.stringify({
+					username_key: currentUsername.toLowerCase(),
+					username: currentUsername,
+					score: Math.floor(score),
+					rebirths: rebirthCount,
+					updated_at: new Date().toISOString(),
+				}),
+			});
+			if (!response.ok) throw new Error(`Online score save failed (${response.status}).`);
+		}
+
+		function scheduleOnlineSave() {
+			if (!isSharedLeaderboardConfigured() || !currentUsername) return;
+			clearTimeout(onlineSaveTimer);
+			onlineSaveTimer = setTimeout(() => {
+				saveOnlineScore().catch((error) => console.error(error));
+			}, 1000);
+		}
+
+		async function loadOnlineLeaderboard() {
+			const url = `${SUPABASE_URL}/rest/v1/clicker_leaderboard?select=username,score,rebirths&order=rebirths.desc,score.desc&limit=100`;
+			const response = await fetch(url, { headers: getSupabaseHeaders() });
+			if (!response.ok) throw new Error(`Online leaderboard load failed (${response.status}).`);
+			return response.json();
+		}
+
 		function saveGame() {
 			if (!currentUsername) return;
 
@@ -568,6 +655,7 @@
 				players[playerKey] = {
 					username: currentUsername,
 					score,
+					rebirths: rebirthCount,
 					state: {
 					score,
 					clickPower,
@@ -578,6 +666,7 @@
 					autoCost,
 						offlineClick,
 						offlineCost,
+						rebirthCount,
 						lastSeenAt,
 					}
 				};
@@ -585,6 +674,7 @@
 			} catch (error) {
 				console.warn("Failed to save game:", error);
 			}
+			scheduleOnlineSave();
 		}
 
 		function startGame(username) {
@@ -612,7 +702,7 @@
 			}
 			applyGameState(player.state || player);
 			const awaySeconds = Math.max(0, (Date.now() - lastSeenAt) / 1000);
-			const offlineEarnings = Math.floor(awaySeconds * offlineClick);
+			const offlineEarnings = Math.floor(awaySeconds * offlineClick * getEarningMultiplier());
 			score += offlineEarnings;
 			offlineSummaryEl.hidden = offlineEarnings === 0;
 			if (offlineEarnings > 0) {
@@ -625,17 +715,17 @@
 			clickButton.focus();
 		}
 
-		function renderLeaderboard() {
+		function renderLeaderboard(entries = Object.values(players)) {
 			leaderboardRows.replaceChildren();
-			const sortedPlayers = Object.values(players)
+			const sortedPlayers = entries
 				.filter((player) => player && typeof player.username === "string")
-				.sort((first, second) => Number(second.score || 0) - Number(first.score || 0) || first.username.localeCompare(second.username))
+				.sort((first, second) => Number(second.rebirths || 0) - Number(first.rebirths || 0) || Number(second.score || 0) - Number(first.score || 0) || first.username.localeCompare(second.username))
 				.slice(0, 100);
 
 			if (sortedPlayers.length === 0) {
 				const row = document.createElement("tr");
 				const cell = document.createElement("td");
-				cell.colSpan = 3;
+				cell.colSpan = 4;
 				cell.className = "leaderboard-empty";
 				cell.textContent = "No players yet.";
 				row.append(cell);
@@ -650,10 +740,35 @@
 				const scoreCell = document.createElement("td");
 				rankCell.textContent = String(index + 1);
 				usernameCell.textContent = player.username;
+				const rebirthCell = document.createElement("td");
+				rebirthCell.textContent = String(Number(player.rebirths) || 0);
 				scoreCell.textContent = new Intl.NumberFormat().format(Math.floor(Number(player.score) || 0));
-				row.append(rankCell, usernameCell, scoreCell);
+				row.append(rankCell, usernameCell, rebirthCell, scoreCell);
 				leaderboardRows.append(row);
 			});
+		}
+
+		async function showLeaderboard() {
+			saveGame();
+			leaderboardOverlay.hidden = false;
+			document.getElementById("closeLeaderboard").focus();
+			if (!isSharedLeaderboardConfigured()) {
+				leaderboardStatus.textContent = "Scores saved in this browser. Configure Supabase to share scores online.";
+				renderLeaderboard();
+				return;
+			}
+
+			leaderboardStatus.textContent = "Loading shared leaderboard...";
+			try {
+				await saveOnlineScore();
+				const onlinePlayers = await loadOnlineLeaderboard();
+				leaderboardStatus.textContent = "Shared online leaderboard: top 100 players.";
+				renderLeaderboard(onlinePlayers);
+			} catch (error) {
+				console.error(error);
+				leaderboardStatus.textContent = "Could not load online scores. Showing scores saved in this browser.";
+				renderLeaderboard();
+			}
 		}
 
 		const gameCheats = {
@@ -674,7 +789,7 @@
 						score -= cursorCost;
 						cursorLevel += 1;
 						clickPower += 1;
-						cursorCost = Math.floor(cursorCost * 1.6);
+						cursorCost = Math.floor(cursorCost * 1.7);
 						purchased += 1;
 					} else {
 						break;
@@ -690,7 +805,7 @@
 						score -= autoCost;
 						autoLevel += 1;
 						autoClick += 1;
-						autoCost = Math.floor(autoCost * 1.8);
+						autoCost = Math.floor(autoCost * 1.9);
 						purchased += 1;
 					} else {
 						break;
@@ -711,16 +826,20 @@
 
 		function updateUI() {
 			scoreEl.textContent = Math.floor(score);
-			autoScoreEl.textContent = autoClick;
+			autoScoreEl.textContent = autoClick * getEarningMultiplier();
 
 			cursorCostEl.textContent = cursorCost;
 			autoCostEl.textContent = autoCost;
 			offlineCostEl.textContent = offlineCost;
-			offlineRateEl.textContent = offlineClick;
+			offlineRateEl.textContent = offlineClick * getEarningMultiplier();
+			rebirthCostEl.textContent = new Intl.NumberFormat().format(getRebirthCost());
+			rebirthCountEl.textContent = rebirthCount;
+			rebirthMultiplierEl.textContent = `x${getEarningMultiplier()}`;
 
 			buyCursorBtn.disabled = score < cursorCost;
 			buyAutoBtn.disabled = score < autoCost;
 			buyOfflineBtn.disabled = score < offlineCost;
+			buyRebirthBtn.disabled = score < getRebirthCost();
 			if (currentUsername) saveGame();
 		}
 
@@ -731,7 +850,25 @@
 
 		function clickAction() {
 			if (!currentUsername) return;
-			addScore(clickPower);
+			addScore(clickPower * getEarningMultiplier());
+		}
+
+		function performRebirth() {
+			if (!currentUsername || score < getRebirthCost()) return;
+			const confirmed = window.confirm(`Rebirth now? This resets your points, Cursor upgrades, Auto Clickers, and Offline Clickers. Your rebirth count increases and your permanent earnings multiplier becomes x${getEarningMultiplier() + 1}.`);
+			if (!confirmed) return;
+
+			score = 0;
+			clickPower = 1;
+			autoClick = 0;
+			cursorLevel = 0;
+			autoLevel = 0;
+			cursorCost = 15;
+			autoCost = 25;
+			offlineClick = 0;
+			offlineCost = 100;
+			rebirthCount += 1;
+			updateUI();
 		}
 
 		function executeGameCommand(commandText) {
@@ -768,7 +905,7 @@
 				clickButton.focus();
 				return;
 			}
-			if (event.code === "Space" && !typingTarget) {
+			if (event.code === "Space" && !event.repeat && !typingTarget) {
 				event.preventDefault();
 				clickAction();
 			}
@@ -811,12 +948,7 @@
 			if (!shopEl.hidden) buyCursorBtn.focus();
 		});
 
-		document.getElementById("openLeaderboard").addEventListener("click", () => {
-			saveGame();
-			renderLeaderboard();
-			leaderboardOverlay.hidden = false;
-			document.getElementById("closeLeaderboard").focus();
-		});
+		document.getElementById("openLeaderboard").addEventListener("click", showLeaderboard);
 
 		document.getElementById("closeLeaderboard").addEventListener("click", () => {
 			leaderboardOverlay.hidden = true;
@@ -851,14 +983,16 @@
 			if (currentUsername && score >= offlineCost) {
 				score -= offlineCost;
 				offlineClick += 1;
-				offlineCost = Math.floor(offlineCost * 1.8);
+				offlineCost = Math.floor(offlineCost * 1.9);
 				updateUI();
 			}
 		});
 
+		buyRebirthBtn.addEventListener("click", performRebirth);
+
 		setInterval(() => {
 			if (autoClick > 0) {
-				score += autoClick;
+				score += autoClick * getEarningMultiplier();
 				updateUI();
 			}
 			saveGame();
