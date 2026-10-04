@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>Clicker Game</title>
+	<style>
+		:root {
+			--bg1: #0f172a;
+			--bg2: #1e293b;
+			--panel: rgba(15, 23, 42, 0.8);
+			--primary: #22c55e;
+			--primary-dark: #16a34a;
+			--accent: #facc15;
+			--text: #e2e8f0;
+			--muted: #a5b4fc;
+			--danger: #ef4444;
+			--shadow: rgba(0, 0, 0, 0.35);
+		}
+
+		* {
+			box-sizing: border-box;
+			user-select: none;
+			-webkit-tap-highlight-color: transparent;
+		}
+
+		body {
+			margin: 0;
+			font-family: Arial, Helvetica, sans-serif;
+			background: linear-gradient(135deg, var(--bg1), var(--bg2));
+			color: var(--text);
+			min-height: 100vh;
+			display: flex;
+			justify-content: center;
+			align-items: center;
+			padding: 20px;
+		}
+
+		.game {
+			width: min(900px, 100%);
+			background: var(--panel);
+			border: 2px solid rgba(255, 255, 255, 0.1);
+			box-shadow: 0 20px 45px var(--shadow);
+			border-radius: 22px;
+			padding: 24px;
+			backdrop-filter: blur(8px);
+		}
+
+		.topbar {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			gap: 16px;
+			margin-bottom: 20px;
+			flex-wrap: wrap;
+		}
+
+		.player-actions {
+			display: flex;
+			align-items: center;
+			justify-content: flex-end;
+			gap: 10px;
+			margin-left: auto;
+		}
+
+		.player-name {
+			color: var(--text);
+			font-weight: 700;
+		}
+
+		.topbar-btn,
+		.dialog-btn {
+			border: 1px solid rgba(255, 255, 255, 0.2);
+			border-radius: 8px;
+			padding: 10px 14px;
+			background: #facc15;
+			color: #172033;
+			font: inherit;
+			font-weight: 700;
+			cursor: pointer;
+		}
+
+		.overlay {
+			position: fixed;
+			inset: 0;
+			z-index: 5;
+			display: grid;
+			place-items: center;
+			padding: 20px;
+			background: rgba(2, 6, 23, 0.82);
+		}
+
+		.overlay[hidden] {
+			display: none;
+		}
+
+		.command-panel {
+			position: fixed;
+			bottom: 24px;
+			left: 50%;
+			z-index: 6;
+			width: min(620px, calc(100% - 32px));
+			padding: 16px;
+			transform: translateX(-50%);
+			border: 1px solid rgba(255, 255, 255, 0.18);
+			border-radius: 10px;
+			background: #172033;
+			box-shadow: 0 20px 45px var(--shadow);
+		}
+
+		.command-panel[hidden] {
+			display: none;
+		}
+
+		.command-form {
+			display: flex;
+			gap: 8px;
+		}
+
+		.command-form input {
+			min-width: 0;
+			flex: 1;
+			padding: 10px 12px;
+			border: 1px solid #64748b;
+			border-radius: 8px;
+			background: #0f172a;
+			color: var(--text);
+			font: inherit;
+		}
+
+		.command-form button {
+			border: 1px solid rgba(255, 255, 255, 0.2);
+			border-radius: 8px;
+			padding: 10px 12px;
+			background: #facc15;
+			color: #172033;
+			font: inherit;
+			font-weight: 700;
+			cursor: pointer;
+		}
+
+		.command-result {
+			margin: 10px 0 0;
+			color: #cbd5e1;
+			white-space: pre-wrap;
+		}
+
+		.dialog {
+			width: min(520px, 100%);
+			max-height: min(80vh, 720px);
+			overflow: auto;
+			padding: 24px;
+			border: 1px solid rgba(255, 255, 255, 0.16);
+			border-radius: 12px;
+			background: #172033;
+			box-shadow: 0 20px 45px var(--shadow);
+		}
+
+		.dialog h1,
+		.dialog h2 {
+			margin: 0 0 12px;
+		}
+
+		.dialog p {
+			color: #cbd5e1;
+			line-height: 1.5;
+		}
+
+		.dialog form {
+			display: flex;
+			gap: 10px;
+			margin-top: 18px;
+		}
+
+		.dialog input {
+			min-width: 0;
+			flex: 1;
+			padding: 10px 12px;
+			border: 1px solid #64748b;
+			border-radius: 8px;
+			background: #0f172a;
+			color: var(--text);
+			font: inherit;
+		}
+
+		.dialog-error {
+			min-height: 1.4em;
+			color: #fca5a5 !important;
+		}
+
+		.dialog-heading {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			gap: 12px;
+		}
+
+		.leaderboard-table {
+			width: 100%;
+			border-collapse: collapse;
+			text-align: left;
+		}
+
+		.leaderboard-table th,
+		.leaderboard-table td {
+			padding: 10px 8px;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		}
+
+		.leaderboard-table th:last-child,
+		.leaderboard-table td:last-child {
+			text-align: right;
+		}
+
+		.leaderboard-empty {
+			padding: 20px 8px;
+			color: #cbd5e1;
+			text-align: center;
+		}
+
+		.score-box {
+			background: rgba(255, 255, 255, 0.05);
+			border: 1px solid rgba(255, 255, 255, 0.08);
+			border-radius: 14px;
+			padding: 14px 18px;
+			min-width: 180px;
+		}
+
+		.label {
+			display: block;
+			font-size: 12px;
+			letter-spacing: 1px;
+			text-transform: uppercase;
+			color: #cbd5e1;
+			opacity: 0.8;
+		}
+
+		.score {
+			font-size: clamp(28px, 4vw, 42px);
+			font-weight: 700;
+			margin-top: 6px;
+		}
+
+		.clicker {
+			flex: 1;
+			display: flex;
+			justify-content: center;
+			align-items: center;
+			min-height: 220px;
+		}
+
+		.click-button {
+			width: min(260px, 70vw);
+			height: min(260px, 70vw);
+			border: none;
+			border-radius: 50%;
+			background: radial-gradient(circle at 35% 30%, #4ade80 0%, var(--primary) 30%, var(--primary-dark) 100%);
+			color: white;
+			font-size: clamp(28px, 4vw, 38px);
+			font-weight: 900;
+			letter-spacing: 1px;
+			box-shadow: 0 15px 30px rgba(34, 197, 94, 0.4);
+			cursor: pointer;
+			transition: transform 0.08s ease, box-shadow 0.2s ease, filter 0.2s ease;
+			text-transform: uppercase;
+			position: relative;
+			overflow: hidden;
+		}
+
+		.click-button:hover {
+			transform: translateY(-2px) scale(1.01);
+			box-shadow: 0 18px 35px rgba(34, 197, 94, 0.48);
+			filter: brightness(1.05);
+		}
+
+		.click-button:active {
+			transform: scale(0.96);
+		}
+
+		.click-button::after {
+			content: "";
+			position: absolute;
+			inset: 18% 20%;
+			border-radius: 50%;
+			border: 2px solid rgba(255, 255, 255, 0.4);
+			pointer-events: none;
+		}
+
+		.shop {
+			margin-top: 20px;
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+			gap: 18px;
+		}
+
+		.shop[hidden] {
+			display: none;
+		}
+
+		.offline-summary {
+			margin: 0 0 16px;
+			color: var(--accent);
+			font-weight: 700;
+		}
+
+		.shop-item {
+			background: rgba(255, 255, 255, 0.04);
+			border: 1px solid rgba(255, 255, 255, 0.08);
+			border-radius: 16px;
+			padding: 16px;
+			display: flex;
+			flex-direction: column;
+			justify-content: space-between;
+			gap: 12px;
+		}
+
+		.shop-item h3 {
+			margin: 0;
+			font-size: 18px;
+		}
+
+		.shop-item p {
+			margin: 0;
+			color: #cbd5e1;
+			line-height: 1.4;
+			font-size: 14px;
+		}
+
+		.shop-row {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			gap: 12px;
+		}
+
+		.cost {
+			font-weight: 700;
+			color: var(--accent);
+		}
+
+		.buy-btn {
+			border: none;
+			background: #f59e0b;
+			color: #111827;
+			font-weight: 800;
+			padding: 10px 14px;
+			border-radius: 10px;
+			cursor: pointer;
+			transition: transform 0.08s ease, filter 0.2s ease;
+		}
+
+		.buy-btn:hover {
+			filter: brightness(1.05);
+		}
+
+		.buy-btn:active {
+			transform: scale(0.97);
+		}
+
+		.buy-btn:disabled {
+			background: #374151;
+			color: #9ca3af;
+			cursor: not-allowed;
+		}
+
+		@media (max-width: 560px) {
+			.game {
+				padding: 16px;
+			}
+
+			.clicker {
+				min-height: 180px;
+			}
+		}
+	</style>
+</head>
+<body>
+	<div class="game">
+		<div class="topbar">
+			<div class="score-box">
+				<span class="label">Score</span>
+				<div id="score" class="score">0</div>
+			</div>
+
+			<div class="score-box">
+				<span class="label">Auto / sec</span>
+				<div id="autoScore" class="score">0</div>
+			</div>
+
+			<div class="player-actions">
+				<span id="playerName" class="player-name"></span>
+				<button id="changePlayer" class="topbar-btn" type="button">Change player</button>
+				<button id="toggleShop" class="topbar-btn" type="button" aria-expanded="false">Shop</button>
+				<button id="openLeaderboard" class="topbar-btn" type="button">Leaderboard</button>
+			</div>
+		</div>
+		<p id="offlineSummary" class="offline-summary" aria-live="polite" hidden></p>
+
+		<div class="clicker">
+			<button id="clickButton" class="click-button">Click!</button>
+		</div>
+
+		<div id="shop" class="shop" hidden>
+			<div class="shop-item">
+				<div>
+					<h3>Cursor Upgrade</h3>
+					<p>Increase each click by +1 point.</p>
+				</div>
+				<div class="shop-row">
+					<span class="cost" id="cursorCost">15</span>
+					<button class="buy-btn" id="buyCursor">Buy</button>
+				</div>
+			</div>
+
+			<div class="shop-item">
+				<div>
+					<h3>Auto Clicker</h3>
+					<p>Automatically earns points every second.</p>
+				</div>
+				<div class="shop-row">
+					<span class="cost" id="autoCost">25</span>
+					<button class="buy-btn" id="buyAuto">Buy</button>
+				</div>
+			</div>
+
+			<div class="shop-item">
+				<div>
+					<h3>Offline Clicker</h3>
+					<p>Earn <span id="offlineRate">0</span> points per second for every second you're away.</p>
+				</div>
+				<div class="shop-row">
+					<span class="cost" id="offlineCost">100</span>
+					<button class="buy-btn" id="buyOffline">Buy</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div id="loginOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+		<section class="dialog">
+			<h1 id="loginTitle">Choose a username</h1>
+			<p>Enter a username to start or continue that player's saved game.</p>
+			<p class="dialog-error" id="loginError" aria-live="polite"></p>
+			<form id="loginForm">
+				<input id="usernameInput" name="username" type="text" maxlength="20" autocomplete="nickname" placeholder="Username" required />
+				<button class="dialog-btn" type="submit">Play</button>
+			</form>
+		</section>
+	</div>
+
+	<div id="leaderboardOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="leaderboardTitle" hidden>
+		<section class="dialog">
+			<div class="dialog-heading">
+				<h2 id="leaderboardTitle">Top 100</h2>
+				<button id="closeLeaderboard" class="dialog-btn" type="button">Close</button>
+			</div>
+			<p>Scores saved in this browser.</p>
+			<table class="leaderboard-table">
+				<thead><tr><th>Rank</th><th>Username</th><th>Points</th></tr></thead>
+				<tbody id="leaderboardRows"></tbody>
+			</table>
+		</section>
+	</div>
+
+	<div id="commandPanel" class="command-panel" hidden>
+		<form id="commandForm" class="command-form" autocomplete="off">
+			<input id="commandInput" type="text" aria-label="Game command" placeholder="game.givePoints(1000)" spellcheck="false" />
+			<button type="submit">Run</button>
+			<button id="closeCommand" type="button">Close</button>
+		</form>
+		<p id="commandResult" class="command-result" role="status" aria-live="polite"></p>
+	</div>
+
+	<script>
+		const scoreEl = document.getElementById("score");
+		const autoScoreEl = document.getElementById("autoScore");
+		const clickButton = document.getElementById("clickButton");
+
+		const buyCursorBtn = document.getElementById("buyCursor");
+		const buyAutoBtn = document.getElementById("buyAuto");
+		const buyOfflineBtn = document.getElementById("buyOffline");
+
+		const cursorCostEl = document.getElementById("cursorCost");
+		const autoCostEl = document.getElementById("autoCost");
+		const offlineCostEl = document.getElementById("offlineCost");
+		const offlineRateEl = document.getElementById("offlineRate");
+		const playerNameEl = document.getElementById("playerName");
+		const offlineSummaryEl = document.getElementById("offlineSummary");
+		const shopEl = document.getElementById("shop");
+		const toggleShopBtn = document.getElementById("toggleShop");
+		const loginOverlay = document.getElementById("loginOverlay");
+		const loginForm = document.getElementById("loginForm");
+		const usernameInput = document.getElementById("usernameInput");
+		const loginError = document.getElementById("loginError");
+		const leaderboardOverlay = document.getElementById("leaderboardOverlay");
+		const leaderboardRows = document.getElementById("leaderboardRows");
+		const commandPanel = document.getElementById("commandPanel");
+		const commandForm = document.getElementById("commandForm");
+		const commandInput = document.getElementById("commandInput");
+		const commandResult = document.getElementById("commandResult");
+
+		let score = 0;
+		let clickPower = 1;
+		let autoClick = 0;
+
+		let cursorLevel = 0;
+		let autoLevel = 0;
+
+		let cursorCost = 15;
+		let autoCost = 25;
+		let offlineClick = 0;
+		let offlineCost = 100;
+		let lastSeenAt = Date.now();
+		let currentUsername = "";
+		let players = {};
+
+		const STORAGE_KEY = "clickerGameSave";
+		const PLAYERS_STORAGE_KEY = "clickerGamePlayers";
+		const ACTIVE_USERNAME_STORAGE_KEY = "clickerGameActiveUsername";
+
+		function getDefaultState() {
+			return {
+				score: 0,
+				clickPower: 1,
+				autoClick: 0,
+				cursorLevel: 0,
+				autoLevel: 0,
+				cursorCost: 15,
+				autoCost: 25,
+				offlineClick: 0,
+				offlineCost: 100,
+				lastSeenAt: Date.now(),
+			};
+		}
+
+		function applyGameState(savedData) {
+			const defaults = getDefaultState();
+			const valueOrDefault = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+			score = valueOrDefault(savedData.score, defaults.score);
+			clickPower = valueOrDefault(savedData.clickPower, defaults.clickPower);
+			autoClick = valueOrDefault(savedData.autoClick, defaults.autoClick);
+			cursorLevel = valueOrDefault(savedData.cursorLevel, defaults.cursorLevel);
+			autoLevel = valueOrDefault(savedData.autoLevel, defaults.autoLevel);
+			cursorCost = valueOrDefault(savedData.cursorCost, defaults.cursorCost);
+			autoCost = valueOrDefault(savedData.autoCost, defaults.autoCost);
+			offlineClick = valueOrDefault(savedData.offlineClick, defaults.offlineClick);
+			offlineCost = valueOrDefault(savedData.offlineCost, defaults.offlineCost);
+			lastSeenAt = valueOrDefault(savedData.lastSeenAt, Date.now());
+		}
+
+		function loadPlayers() {
+			try {
+				const savedPlayers = JSON.parse(localStorage.getItem(PLAYERS_STORAGE_KEY));
+				if (savedPlayers && typeof savedPlayers === "object" && !Array.isArray(savedPlayers)) {
+					players = savedPlayers;
+				}
+			} catch (error) {
+				console.warn("Failed to load player saves:", error);
+			}
+		}
+
+		function saveGame() {
+			if (!currentUsername) return;
+
+			try {
+				const playerKey = currentUsername.toLowerCase();
+				lastSeenAt = Date.now();
+				players[playerKey] = {
+					username: currentUsername,
+					score,
+					state: {
+					score,
+					clickPower,
+					autoClick,
+					cursorLevel,
+					autoLevel,
+					cursorCost,
+					autoCost,
+						offlineClick,
+						offlineCost,
+						lastSeenAt,
+					}
+				};
+				localStorage.setItem(PLAYERS_STORAGE_KEY, JSON.stringify(players));
+			} catch (error) {
+				console.warn("Failed to save game:", error);
+			}
+		}
+
+		function startGame(username) {
+			const playerKey = username.toLowerCase();
+			let player = players[playerKey];
+			if (!player) {
+				let initialState = getDefaultState();
+				if (Object.keys(players).length === 0) {
+					try {
+						const previousSave = JSON.parse(localStorage.getItem(STORAGE_KEY));
+						if (previousSave) initialState = { ...initialState, ...previousSave };
+					} catch (error) {
+						console.warn("Failed to migrate previous save:", error);
+					}
+				}
+				player = { username, score: initialState.score, state: initialState };
+				players[playerKey] = player;
+			}
+
+			currentUsername = player.username;
+			try {
+				localStorage.setItem(ACTIVE_USERNAME_STORAGE_KEY, currentUsername);
+			} catch (error) {
+				console.warn("Failed to remember username:", error);
+			}
+			applyGameState(player.state || player);
+			const awaySeconds = Math.max(0, (Date.now() - lastSeenAt) / 1000);
+			const offlineEarnings = Math.floor(awaySeconds * offlineClick);
+			score += offlineEarnings;
+			offlineSummaryEl.hidden = offlineEarnings === 0;
+			if (offlineEarnings > 0) {
+				offlineSummaryEl.textContent = `Welcome back! Your Offline Clicker earned ${new Intl.NumberFormat().format(offlineEarnings)} points.`;
+			}
+			playerNameEl.textContent = currentUsername;
+			loginError.textContent = "";
+			loginOverlay.hidden = true;
+			updateUI();
+			clickButton.focus();
+		}
+
+		function renderLeaderboard() {
+			leaderboardRows.replaceChildren();
+			const sortedPlayers = Object.values(players)
+				.filter((player) => player && typeof player.username === "string")
+				.sort((first, second) => Number(second.score || 0) - Number(first.score || 0) || first.username.localeCompare(second.username))
+				.slice(0, 100);
+
+			if (sortedPlayers.length === 0) {
+				const row = document.createElement("tr");
+				const cell = document.createElement("td");
+				cell.colSpan = 3;
+				cell.className = "leaderboard-empty";
+				cell.textContent = "No players yet.";
+				row.append(cell);
+				leaderboardRows.append(row);
+				return;
+			}
+
+			sortedPlayers.forEach((player, index) => {
+				const row = document.createElement("tr");
+				const rankCell = document.createElement("td");
+				const usernameCell = document.createElement("td");
+				const scoreCell = document.createElement("td");
+				rankCell.textContent = String(index + 1);
+				usernameCell.textContent = player.username;
+				scoreCell.textContent = new Intl.NumberFormat().format(Math.floor(Number(player.score) || 0));
+				row.append(rankCell, usernameCell, scoreCell);
+				leaderboardRows.append(row);
+			});
+		}
+
+		const gameCheats = {
+			givePoints(amount = 1000) {
+				score += Number(amount) || 0;
+				updateUI();
+				return score;
+			},
+			setScore(value = 0) {
+				score = Number(value) || 0;
+				updateUI();
+				return score;
+			},
+			buyCursorFast(amount = 1) {
+				let purchased = 0;
+				for (let i = 0; i < Number(amount) || 0; i++) {
+					if (score >= cursorCost) {
+						score -= cursorCost;
+						cursorLevel += 1;
+						clickPower += 1;
+						cursorCost = Math.floor(cursorCost * 1.6);
+						purchased += 1;
+					} else {
+						break;
+					}
+				}
+				updateUI();
+				return { purchased, cursorLevel, clickPower, cursorCost };
+			},
+			buyAutoFast(amount = 1) {
+				let purchased = 0;
+				for (let i = 0; i < Number(amount) || 0; i++) {
+					if (score >= autoCost) {
+						score -= autoCost;
+						autoLevel += 1;
+						autoClick += 1;
+						autoCost = Math.floor(autoCost * 1.8);
+						purchased += 1;
+					} else {
+						break;
+					}
+				}
+				updateUI();
+				return { purchased, autoLevel, autoClick, autoCost };
+			},
+			help() {
+				console.log("Commands: game.givePoints(1000), game.setScore(5000), game.buyCursorFast(3), game.buyAutoFast(2), game.help()");
+				return "Commands: game.givePoints(1000), game.setScore(5000), game.buyCursorFast(3), game.buyAutoFast(2), game.help()";
+			}
+		};
+
+		window.game = gameCheats;
+		window.givePoints = gameCheats.givePoints;
+		window.setScore = gameCheats.setScore;
+
+		function updateUI() {
+			scoreEl.textContent = Math.floor(score);
+			autoScoreEl.textContent = autoClick;
+
+			cursorCostEl.textContent = cursorCost;
+			autoCostEl.textContent = autoCost;
+			offlineCostEl.textContent = offlineCost;
+			offlineRateEl.textContent = offlineClick;
+
+			buyCursorBtn.disabled = score < cursorCost;
+			buyAutoBtn.disabled = score < autoCost;
+			buyOfflineBtn.disabled = score < offlineCost;
+			if (currentUsername) saveGame();
+		}
+
+		function addScore(amount) {
+			score += amount;
+			updateUI();
+		}
+
+		function clickAction() {
+			if (!currentUsername) return;
+			addScore(clickPower);
+		}
+
+		function executeGameCommand(commandText) {
+			const match = commandText.trim().match(/^(?:game\.)?(help|givePoints|setScore|buyCursorFast|buyAutoFast)\s*(?:\(([^()]*)\))?;?$/i);
+			if (!match) return "Unknown command. Try game.help().";
+			if (!currentUsername) return "Choose a username before using game commands.";
+
+			const commandName = Object.keys(gameCheats).find((name) => name.toLowerCase() === match[1].toLowerCase());
+			const args = match[2] && match[2].trim() ? [Number(match[2].trim())] : [];
+			if (!commandName || args.some((argument) => !Number.isFinite(argument))) {
+				return "Invalid command or number. Try game.help().";
+			}
+
+			const result = gameCheats[commandName](...args);
+			return typeof result === "string" ? result : JSON.stringify(result);
+		}
+
+		clickButton.addEventListener("click", clickAction);
+		clickButton.addEventListener("pointerdown", (event) => {
+			event.preventDefault();
+			clickAction();
+		});
+
+		window.addEventListener("keydown", (event) => {
+			const typingTarget = event.target && (event.target.isContentEditable || ["INPUT", "TEXTAREA"].includes(event.target.tagName));
+			if (event.key === "/" && !typingTarget) {
+				event.preventDefault();
+				commandPanel.hidden = false;
+				commandInput.focus();
+				return;
+			}
+			if (event.key === "Escape" && !commandPanel.hidden) {
+				commandPanel.hidden = true;
+				clickButton.focus();
+				return;
+			}
+			if (event.code === "Space" && !typingTarget) {
+				event.preventDefault();
+				clickAction();
+			}
+		});
+
+		commandForm.addEventListener("submit", (event) => {
+			event.preventDefault();
+			commandResult.textContent = executeGameCommand(commandInput.value);
+			commandInput.value = "";
+		});
+
+		document.getElementById("closeCommand").addEventListener("click", () => {
+			commandPanel.hidden = true;
+			clickButton.focus();
+		});
+
+		window.addEventListener("beforeunload", saveGame);
+
+		loginForm.addEventListener("submit", (event) => {
+			event.preventDefault();
+			const username = usernameInput.value.trim().replace(/\s+/g, " ");
+			if (!username) {
+				loginError.textContent = "Please enter a username.";
+				return;
+			}
+			startGame(username);
+		});
+
+		document.getElementById("changePlayer").addEventListener("click", () => {
+			saveGame();
+			currentUsername = "";
+			usernameInput.value = "";
+			loginOverlay.hidden = false;
+			usernameInput.focus();
+		});
+
+		toggleShopBtn.addEventListener("click", () => {
+			shopEl.hidden = !shopEl.hidden;
+			toggleShopBtn.setAttribute("aria-expanded", String(!shopEl.hidden));
+			if (!shopEl.hidden) buyCursorBtn.focus();
+		});
+
+		document.getElementById("openLeaderboard").addEventListener("click", () => {
+			saveGame();
+			renderLeaderboard();
+			leaderboardOverlay.hidden = false;
+			document.getElementById("closeLeaderboard").focus();
+		});
+
+		document.getElementById("closeLeaderboard").addEventListener("click", () => {
+			leaderboardOverlay.hidden = true;
+			document.getElementById("openLeaderboard").focus();
+		});
+
+		leaderboardOverlay.addEventListener("click", (event) => {
+			if (event.target === leaderboardOverlay) leaderboardOverlay.hidden = true;
+		});
+
+		buyCursorBtn.addEventListener("click", () => {
+			if (currentUsername && score >= cursorCost) {
+				score -= cursorCost;
+				cursorLevel += 1;
+				clickPower += 1;
+				cursorCost = Math.floor(cursorCost * 1.6);
+				updateUI();
+			}
+		});
+
+		buyAutoBtn.addEventListener("click", () => {
+			if (currentUsername && score >= autoCost) {
+				score -= autoCost;
+				autoLevel += 1;
+				autoClick += 1;
+				autoCost = Math.floor(autoCost * 1.8);
+				updateUI();
+			}
+		});
+
+		buyOfflineBtn.addEventListener("click", () => {
+			if (currentUsername && score >= offlineCost) {
+				score -= offlineCost;
+				offlineClick += 1;
+				offlineCost = Math.floor(offlineCost * 1.8);
+				updateUI();
+			}
+		});
+
+		setInterval(() => {
+			if (autoClick > 0) {
+				score += autoClick;
+				updateUI();
+			}
+			saveGame();
+		}, 1000);
+
+		loadPlayers();
+		let rememberedUsername = "";
+		try {
+			rememberedUsername = localStorage.getItem(ACTIVE_USERNAME_STORAGE_KEY) || "";
+		} catch (error) {
+			console.warn("Failed to load remembered username:", error);
+		}
+		const rememberedPlayer = players[rememberedUsername.toLowerCase()];
+		if (rememberedPlayer && typeof rememberedPlayer.username === "string") {
+			startGame(rememberedPlayer.username);
+		} else {
+			updateUI();
+			usernameInput.focus();
+		}
+	</script>
+</body>
+</html>
