@@ -1287,9 +1287,14 @@
 				updateUI();
 				return { purchased, autoLevel, autoClick, autoCost };
 			},
+			resetWheelCooldown() {
+				lastWheelAt = 0;
+				updateUI();
+				return "Prize wheel cooldown reset. You can spin again.";
+			},
 			help() {
-				console.log("Commands: game.givePoints(1000), game.setScore(5000), game.buyCursorFast(3), game.buyAutoFast(2), game.help()");
-				return "Commands: game.givePoints(1000), game.setScore(5000), game.buyCursorFast(3), game.buyAutoFast(2), game.help()";
+				console.log("Commands: game.givePoints(1000), game.setScore(5000), game.buyCursorFast(3), game.buyAutoFast(2), game.resetWheelCooldown(), game.help()");
+				return "Commands: game.givePoints(1000), game.setScore(5000), game.buyCursorFast(3), game.buyAutoFast(2), game.resetWheelCooldown(), game.help()";
 			}
 		};
 
@@ -1445,7 +1450,7 @@
 		}
 
 		function executeGameCommand(commandText) {
-			const match = commandText.trim().match(/^(?:game\.)?(help|givePoints|setScore|buyCursorFast|buyAutoFast)\s*(?:\(([^()]*)\))?;?$/i);
+			const match = commandText.trim().match(/^(?:game\.)?(help|givePoints|setScore|buyCursorFast|buyAutoFast|resetWheelCooldown)\s*(?:\(([^()]*)\))?;?$/i);
 			if (!match) return "Unknown command. Try game.help().";
 			if (!currentUsername) return "Choose a username before using game commands.";
 
