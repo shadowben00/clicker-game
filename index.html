@@ -238,6 +238,37 @@
 			font-weight: 700;
 		}
 
+		.area-list {
+			display: grid;
+			gap: 12px;
+		}
+
+		.area-item {
+			padding: 14px;
+			border: 1px solid rgba(255, 255, 255, 0.14);
+			border-left: 4px solid var(--area-color, var(--accent));
+			border-radius: 8px;
+			background: rgba(255, 255, 255, 0.04);
+		}
+
+		.area-item h3 {
+			margin: 0 0 6px;
+		}
+
+		.area-item p {
+			margin: 4px 0;
+		}
+
+		.area-item .dialog-btn {
+			margin-top: 8px;
+		}
+
+		.area-item .dialog-btn:disabled {
+			background: #374151;
+			color: #9ca3af;
+			cursor: not-allowed;
+		}
+
 		.wheel-dialog {
 			text-align: center;
 		}
@@ -581,6 +612,7 @@
 				<button id="openWheel" class="topbar-btn" type="button">Prize Wheel</button>
 				<button id="openDailyChallenge" class="topbar-btn" type="button">Daily Challenge</button>
 				<button id="openWeeklyChallenge" class="topbar-btn" type="button">Weekly Challenge</button>
+				<button id="openAreas" class="topbar-btn" type="button">Areas</button>
 			</div>
 		</div>
 		<p id="offlineSummary" class="offline-summary" aria-live="polite" hidden></p>
@@ -751,6 +783,17 @@
 		</section>
 	</div>
 
+	<div id="areasOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="areasTitle" hidden>
+		<section class="dialog">
+			<div class="dialog-heading">
+				<h2 id="areasTitle">Unlockable Areas</h2>
+				<button id="closeAreas" class="dialog-btn" type="button">Close</button>
+			</div>
+			<p id="currentAreaLabel" aria-live="polite"></p>
+			<div id="areaList" class="area-list"></div>
+		</section>
+	</div>
+
 	<div id="commandPanel" class="command-panel" hidden>
 		<form id="commandForm" class="command-form" autocomplete="off">
 			<input id="commandInput" type="text" aria-label="Game command" placeholder="game.givePoints(1000)" spellcheck="false" />
@@ -813,6 +856,10 @@
 		const weeklyChallengeResult = document.getElementById("weeklyChallengeResult");
 		const claimDailyChallengeBtn = document.getElementById("claimDailyChallenge");
 		const claimWeeklyChallengeBtn = document.getElementById("claimWeeklyChallenge");
+		const areasOverlay = document.getElementById("areasOverlay");
+		const areaList = document.getElementById("areaList");
+		const currentAreaLabel = document.getElementById("currentAreaLabel");
+		const gameEl = document.querySelector(".game");
 		const commandPanel = document.getElementById("commandPanel");
 		const commandForm = document.getElementById("commandForm");
 		const commandInput = document.getElementById("commandInput");
@@ -841,6 +888,8 @@
 		let lastWheelAt = 0;
 		let wheelRotation = 0;
 		let challengeState = null;
+		let unlockedAreas = ["green-fields"];
+		let currentAreaId = "green-fields";
 		let lastSeenAt = Date.now();
 		let currentUsername = "";
 		let players = {};
@@ -858,6 +907,14 @@
 		const DAILY_CHALLENGE_REWARD = 10000;
 		const WEEKLY_CHALLENGE_TARGET = 250000;
 		const WEEKLY_CHALLENGE_REWARD = 50000;
+		const BASE_AREA_ID = "green-fields";
+		const AREAS = [
+			{ id: "green-fields", name: "Green Fields", description: "Your peaceful starting point.", cost: 0, multiplier: 1, color: "#22c55e", darkColor: "#16a34a", accent: "#facc15" },
+			{ id: "neon-district", name: "Neon District", description: "A bright city where clicks come faster.", cost: 10000, multiplier: 1.15, color: "#06b6d4", darkColor: "#0e7490", accent: "#67e8f9" },
+			{ id: "moon-base", name: "Moon Base", description: "Low gravity, high-yield clicking.", cost: 100000, multiplier: 1.35, color: "#64748b", darkColor: "#475569", accent: "#e2e8f0" },
+			{ id: "volcanic-ridge", name: "Volcanic Ridge", description: "A hot zone for serious point production.", cost: 1000000, multiplier: 1.65, color: "#f97316", darkColor: "#c2410c", accent: "#fdba74" },
+			{ id: "star-harbor", name: "Star Harbor", description: "The far edge of Clickbound, with the biggest boost.", cost: 10000000, multiplier: 2, color: "#e11d48", darkColor: "#9f1239", accent: "#fda4af" },
+		];
 		const WHEEL_PRIZES = [
 			{ label: "+10", description: "+10 points", reward: 10, weight: 3500, color: "#dc2626" },
 			{ label: "+100", description: "+100 points", reward: 100, weight: 3000, color: "#ea580c" },
@@ -899,6 +956,8 @@
 				lastLoginDate: "",
 				lastWheelAt: 0,
 				challenges: getDefaultChallengeState(),
+				unlockedAreas: [BASE_AREA_ID],
+				currentAreaId: BASE_AREA_ID,
 				lastSeenAt: Date.now(),
 			};
 		}
@@ -926,6 +985,9 @@
 			lastLoginDate = typeof savedData.lastLoginDate === "string" ? savedData.lastLoginDate : defaults.lastLoginDate;
 			lastWheelAt = valueOrDefault(savedData.lastWheelAt, defaults.lastWheelAt);
 			challengeState = normalizeChallengeState(savedData.challenges);
+			const savedAreaIds = Array.isArray(savedData.unlockedAreas) ? savedData.unlockedAreas.filter((areaId) => AREAS.some((area) => area.id === areaId)) : defaults.unlockedAreas;
+			unlockedAreas = [...new Set([BASE_AREA_ID, ...savedAreaIds])];
+			currentAreaId = unlockedAreas.includes(savedData.currentAreaId) ? savedData.currentAreaId : BASE_AREA_ID;
 			lastSeenAt = valueOrDefault(savedData.lastSeenAt, Date.now());
 		}
 
@@ -1128,6 +1190,71 @@
 			challengeState.weeklyPoints = Math.min(WEEKLY_CHALLENGE_TARGET, challengeState.weeklyPoints + amount);
 		}
 
+		function getCurrentArea() {
+			return AREAS.find((area) => area.id === currentAreaId) || AREAS[0];
+		}
+
+		function renderAreas() {
+			const currentArea = getCurrentArea();
+			gameEl.dataset.area = currentArea.id;
+			gameEl.style.setProperty("--primary", currentArea.color);
+			gameEl.style.setProperty("--primary-dark", currentArea.darkColor);
+			gameEl.style.setProperty("--accent", currentArea.accent);
+			currentAreaLabel.textContent = `Current area: ${currentArea.name} (x${currentArea.multiplier} area boost)`;
+			areaList.replaceChildren();
+
+			AREAS.forEach((area) => {
+				const isUnlocked = unlockedAreas.includes(area.id);
+				const isCurrent = currentAreaId === area.id;
+				const item = document.createElement("section");
+				item.className = "area-item";
+				item.style.setProperty("--area-color", area.color);
+				const title = document.createElement("h3");
+				title.textContent = area.name;
+				const description = document.createElement("p");
+				description.textContent = area.description;
+				const details = document.createElement("p");
+				details.textContent = `Earnings multiplier here: x${area.multiplier}`;
+				const action = document.createElement("button");
+				action.className = "dialog-btn";
+				action.type = "button";
+				if (isCurrent) {
+					action.textContent = "Current area";
+					action.disabled = true;
+				} else if (isUnlocked) {
+					action.textContent = "Travel";
+					action.dataset.areaAction = "travel";
+					action.dataset.areaId = area.id;
+				} else {
+					action.textContent = `Unlock (${new Intl.NumberFormat().format(area.cost)} points)`;
+					action.disabled = !currentUsername || score < area.cost;
+					action.dataset.areaAction = "unlock";
+					action.dataset.areaId = area.id;
+				}
+				item.append(title, description, details, action);
+				areaList.append(item);
+			});
+		}
+
+		function handleAreaAction(event) {
+			const actionButton = event.target.closest("button[data-area-action]");
+			if (!actionButton || !currentUsername) return;
+			const area = AREAS.find((entry) => entry.id === actionButton.dataset.areaId);
+			if (!area) return;
+
+			if (actionButton.dataset.areaAction === "unlock") {
+				if (unlockedAreas.includes(area.id) || score < area.cost) return;
+				score -= area.cost;
+				unlockedAreas.push(area.id);
+				currentAreaId = area.id;
+			} else if (actionButton.dataset.areaAction === "travel" && unlockedAreas.includes(area.id)) {
+				currentAreaId = area.id;
+			} else {
+				return;
+			}
+			updateUI();
+		}
+
 		function claimChallenge(period) {
 			if (!currentUsername) return;
 			refreshChallengePeriods();
@@ -1145,7 +1272,8 @@
 
 		function getEarningMultiplier() {
 			const rushMultiplier = isRushHourActive() ? 2 : 1;
-			return (rebirthCount + 1) * (1 + clickBoostLevel * 0.25 + workerLevel * 0.12) * rushMultiplier;
+			const currentArea = AREAS.find((area) => area.id === currentAreaId) || AREAS[0];
+			return (rebirthCount + 1) * (1 + clickBoostLevel * 0.25 + workerLevel * 0.12) * currentArea.multiplier * rushMultiplier;
 		}
 
 		function getRebirthCost() {
@@ -1265,6 +1393,8 @@
 						lastLoginDate,
 						lastWheelAt,
 						challenges: challengeState || getDefaultChallengeState(),
+						unlockedAreas,
+						currentAreaId,
 						lastSeenAt,
 						weeklyScore: savedWeekly,
 						weeklyKey: currentWeekKey,
@@ -1576,6 +1706,7 @@
 			buyRebirthBtn.disabled = score < getRebirthCost();
 			renderWheelCooldown();
 			renderChallenges();
+			renderAreas();
 			if (currentUsername) saveGame();
 		}
 
@@ -1621,7 +1752,7 @@
 
 		function performRebirth() {
 			if (!currentUsername || score < getRebirthCost()) return;
-			const confirmed = window.confirm(`Rebirth now? This resets your points, Cursor upgrades, Auto Clickers, Worker Crew, Points Boosts, Golden Click bonuses, and Offline Clickers. Your rebirth count increases and your permanent earnings multiplier becomes x${getEarningMultiplier() + 1}.`);
+			const confirmed = window.confirm(`Rebirth now? This resets your points, Cursor upgrades, Auto Clickers, Worker Crew, Points Boosts, Golden Click bonuses, Offline Clickers, and unlocked areas. Your rebirth count increases and your permanent earnings multiplier becomes x${getEarningMultiplier() + 1}.`);
 			if (!confirmed) return;
 
 			score = 0;
@@ -1640,6 +1771,8 @@
 			clickBoostCost = 500;
 			goldenClickCost = 800;
 			rebirthCount += 1;
+			unlockedAreas = [BASE_AREA_ID];
+			currentAreaId = BASE_AREA_ID;
 			updateUI();
 		}
 
@@ -1780,6 +1913,19 @@
 			weeklyChallengeOverlay.hidden = false;
 			claimWeeklyChallengeBtn.focus();
 		});
+
+		document.getElementById("openAreas").addEventListener("click", () => {
+			renderAreas();
+			areasOverlay.hidden = false;
+			document.getElementById("closeAreas").focus();
+		});
+
+		document.getElementById("closeAreas").addEventListener("click", () => {
+			areasOverlay.hidden = true;
+			document.getElementById("openAreas").focus();
+		});
+
+		areaList.addEventListener("click", handleAreaAction);
 
 		document.getElementById("closeDailyChallenge").addEventListener("click", () => {
 			dailyChallengeOverlay.hidden = true;
