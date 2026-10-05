@@ -1647,9 +1647,11 @@
 			if (!currentUsername || !window.confirm("Are you sure you want to delete everything?")) return;
 
 			const playerKey = currentUsername.toLowerCase();
+			refreshChallengePeriods();
+			const preservedChallenges = { ...challengeState };
 			const resetState = {
 				...getDefaultState(),
-				challenges: getDefaultChallengeState(),
+				challenges: preservedChallenges,
 				weeklyScore: 0,
 				weeklyKey: getCurrentWeekKey(),
 				achievements: {},
