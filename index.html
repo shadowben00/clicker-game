@@ -601,6 +601,24 @@
 			return FIRST_REBIRTH_COST + rebirthCount * REBIRTH_COST_STEP;
 		}
 
+		function normalizeUsername(username) {
+			return typeof username === "string" ? username.trim().replace(/\s+/g, " ") : "";
+		}
+
+		function getUsernameKey(username) {
+			return normalizeUsername(username).toLowerCase();
+		}
+
+		function isUsernameTaken(username, ignoreCurrentUsername = "") {
+			const normalizedUsername = normalizeUsername(username);
+			if (!normalizedUsername) return false;
+
+			const targetKey = getUsernameKey(normalizedUsername);
+			const ignoredKey = ignoreCurrentUsername ? getUsernameKey(ignoreCurrentUsername) : "";
+			if (ignoredKey && ignoredKey === targetKey) return false;
+			return Object.prototype.hasOwnProperty.call(players, targetKey);
+		}
+
 		function loadPlayers() {
 			try {
 				const savedPlayers = JSON.parse(localStorage.getItem(PLAYERS_STORAGE_KEY));
@@ -694,8 +712,18 @@
 		}
 
 		function startGame(username) {
-			const playerKey = username.toLowerCase();
+			const normalizedUsername = normalizeUsername(username);
+			if (!normalizedUsername) {
+				loginError.textContent = "Please enter a username.";
+				return;
+			}
+
+			const playerKey = getUsernameKey(normalizedUsername);
 			let player = players[playerKey];
+			if (!player && isUsernameTaken(normalizedUsername, currentUsername)) {
+				loginError.textContent = "That username is already taken. Please choose another one.";
+				return;
+			}
 			if (!player) {
 				let initialState = getDefaultState();
 				if (Object.keys(players).length === 0) {
@@ -706,7 +734,7 @@
 						console.warn("Failed to migrate previous save:", error);
 					}
 				}
-				player = { username, score: initialState.score, state: initialState };
+				player = { username: normalizedUsername, score: initialState.score, state: initialState };
 				players[playerKey] = player;
 			}
 
@@ -942,9 +970,14 @@
 
 		loginForm.addEventListener("submit", (event) => {
 			event.preventDefault();
-			const username = usernameInput.value.trim().replace(/\s+/g, " ");
+			const username = normalizeUsername(usernameInput.value);
 			if (!username) {
 				loginError.textContent = "Please enter a username.";
+				return;
+			}
+			const playerKey = getUsernameKey(username);
+			if (!players[playerKey] && isUsernameTaken(username, currentUsername)) {
+				loginError.textContent = "That username is already taken. Please choose another one.";
 				return;
 			}
 			startGame(username);
