@@ -421,6 +421,7 @@
 			</div>
 		</div>
 		<p id="offlineSummary" class="offline-summary" aria-live="polite" hidden></p>
+		<p id="rushHourStatus" class="offline-summary" aria-live="polite" style="margin-top: 0;"></p>
 
 		<div class="clicker">
 			<button id="clickButton" class="click-button">Click!</button>
@@ -567,6 +568,7 @@
 		const rebirthMultiplierEl = document.getElementById("rebirthMultiplier");
 		const playerNameEl = document.getElementById("playerName");
 		const offlineSummaryEl = document.getElementById("offlineSummary");
+		const rushHourStatusEl = document.getElementById("rushHourStatus");
 		const shopEl = document.getElementById("shop");
 		const toggleShopBtn = document.getElementById("toggleShop");
 		const loginOverlay = document.getElementById("loginOverlay");
@@ -662,8 +664,17 @@
 			lastSeenAt = valueOrDefault(savedData.lastSeenAt, Date.now());
 		}
 
+		function isRushHourActive() {
+			const now = new Date();
+			const minutes = now.getHours() * 60 + now.getMinutes();
+			const rushHourStart = 21 * 60;
+			const rushHourEnd = 22 * 60 + 30;
+			return minutes >= rushHourStart && minutes < rushHourEnd;
+		}
+
 		function getEarningMultiplier() {
-			return (rebirthCount + 1) * (1 + clickBoostLevel * 0.25 + workerLevel * 0.12);
+			const rushMultiplier = isRushHourActive() ? 2 : 1;
+			return (rebirthCount + 1) * (1 + clickBoostLevel * 0.25 + workerLevel * 0.12) * rushMultiplier;
 		}
 
 		function getRebirthCost() {
@@ -980,6 +991,10 @@
 		function updateUI() {
 			scoreEl.textContent = Math.floor(score);
 			autoScoreEl.textContent = Math.floor(autoClick * getEarningMultiplier());
+			rushHourStatusEl.textContent = isRushHourActive()
+				? "Rush Hour is active: all points earned are doubled from 9:00 PM to 10:30 PM."
+				: "Rush Hour starts at 9:00 PM and ends at 10:30 PM every day.";
+			rushHourStatusEl.style.color = isRushHourActive() ? "#facc15" : "#cbd5e1";
 
 			cursorCostEl.textContent = cursorCost;
 			autoCostEl.textContent = autoCost;
