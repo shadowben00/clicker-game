@@ -1649,9 +1649,13 @@
 			const playerKey = currentUsername.toLowerCase();
 			refreshChallengePeriods();
 			const preservedChallenges = { ...challengeState };
+			const preservedStreakDays = streakDays;
+			const preservedLastLoginDate = lastLoginDate;
 			const resetState = {
 				...getDefaultState(),
 				challenges: preservedChallenges,
+				streakDays: preservedStreakDays,
+				lastLoginDate: preservedLastLoginDate,
 				weeklyScore: 0,
 				weeklyKey: getCurrentWeekKey(),
 				achievements: {},
