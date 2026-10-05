@@ -199,6 +199,59 @@
 			color: #fca5a5 !important;
 		}
 
+		.wheel-dialog {
+			text-align: center;
+		}
+
+		.wheel-wrap {
+			position: relative;
+			width: min(340px, 72vw);
+			aspect-ratio: 1;
+			margin: 18px auto;
+		}
+
+		.wheel-pointer {
+			position: absolute;
+			z-index: 1;
+			top: -8px;
+			left: 50%;
+			width: 0;
+			height: 0;
+			border-left: 15px solid transparent;
+			border-right: 15px solid transparent;
+			border-top: 28px solid #fff;
+			transform: translateX(-50%);
+			filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
+		}
+
+		.prize-wheel {
+			display: block;
+			width: 100%;
+			height: 100%;
+			border: 6px solid #facc15;
+			border-radius: 50%;
+			box-shadow: 0 0 0 5px #172033, 0 12px 30px rgba(0, 0, 0, 0.4);
+			transition: transform 5s cubic-bezier(0.12, 0.72, 0.12, 1);
+		}
+
+		.wheel-result {
+			min-height: 1.5em;
+			font-size: 20px;
+			font-weight: 800;
+			color: var(--accent) !important;
+		}
+
+		.wheel-odds {
+			margin-bottom: 0;
+			font-size: 13px;
+		}
+
+		#spinWheel:disabled {
+			background: #374151;
+			color: #9ca3af;
+			cursor: not-allowed;
+		}
+
 		.dialog-heading {
 			display: flex;
 			justify-content: space-between;
@@ -308,10 +361,75 @@
 			display: none;
 		}
 
+		.achievement-list {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+			gap: 12px;
+			margin-top: 16px;
+		}
+
+		.achievement-item {
+			padding: 12px 14px;
+			border-radius: 10px;
+			background: rgba(255, 255, 255, 0.04);
+			border: 1px solid rgba(255, 255, 255, 0.08);
+			opacity: 0.5;
+		}
+
+		.achievement-item.unlocked {
+			opacity: 1;
+			border-color: rgba(250, 204, 21, 0.5);
+			background: rgba(250, 204, 21, 0.08);
+		}
+
+		.achievement-item h3 {
+			margin: 0 0 6px;
+			font-size: 17px;
+		}
+
+		.achievement-item p {
+			margin: 0;
+			color: #cbd5e1;
+			font-size: 14px;
+		}
+
 		.offline-summary {
 			margin: 0 0 16px;
 			color: var(--accent);
 			font-weight: 700;
+		}
+
+		.rush-hour-banner {
+			position: fixed;
+			inset: 50% auto auto 50%;
+			transform: translate(-50%, -50%);
+			z-index: 20;
+			padding: 20px 32px;
+			border-radius: 18px;
+			background: rgba(239, 68, 68, 0.96);
+			color: #fff;
+			font-size: clamp(32px, 7vw, 96px);
+			font-weight: 900;
+			letter-spacing: 4px;
+			text-transform: uppercase;
+			box-shadow: 0 25px 60px rgba(239, 68, 68, 0.45);
+			opacity: 0;
+			pointer-events: none;
+			transition: opacity 0.3s ease;
+			animation: rushHourFlash 0.6s infinite alternate;
+		}
+
+		.rush-hour-banner.visible {
+			opacity: 1;
+		}
+
+		@keyframes rushHourFlash {
+			from {
+				filter: brightness(1);
+			}
+			to {
+				filter: brightness(1.3);
+			}
 		}
 
 		.shop-item {
@@ -390,6 +508,8 @@
 	</style>
 </head>
 <body>
+	<div id="rushHourBanner" class="rush-hour-banner" aria-live="assertive">Rush Hour</div>
+
 	<div class="game">
 		<h1 class="game-title">Clickbound</h1>
 		<div class="topbar">
@@ -418,10 +538,11 @@
 				<button id="changePlayer" class="topbar-btn" type="button">Change player</button>
 				<button id="toggleShop" class="topbar-btn" type="button" aria-expanded="false">Shop</button>
 				<button id="openLeaderboard" class="topbar-btn" type="button">Leaderboard</button>
+				<button id="openAchievements" class="topbar-btn" type="button">Achievements</button>
+				<button id="openWheel" class="topbar-btn" type="button">Prize Wheel</button>
 			</div>
 		</div>
 		<p id="offlineSummary" class="offline-summary" aria-live="polite" hidden></p>
-		<p id="rushHourStatus" class="offline-summary" aria-live="polite" style="margin-top: 0;"></p>
 
 		<div class="clicker">
 			<button id="clickButton" class="click-button">Click!</button>
@@ -522,14 +643,41 @@
 	<div id="leaderboardOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="leaderboardTitle" hidden>
 		<section class="dialog">
 			<div class="dialog-heading">
-				<h2 id="leaderboardTitle">Top 100</h2>
+				<h2 id="leaderboardTitle">Weekly Leaderboard</h2>
 				<button id="closeLeaderboard" class="dialog-btn" type="button">Close</button>
 			</div>
-			<p id="leaderboardStatus">Scores saved in this browser. Configure Supabase to share scores online.</p>
+			<p id="leaderboardStatus">Top players this week.</p>
 			<table class="leaderboard-table">
 				<thead><tr><th>Rank</th><th>Username</th><th>Rebirths</th><th>Points</th></tr></thead>
 				<tbody id="leaderboardRows"></tbody>
 			</table>
+		</section>
+	</div>
+
+	<div id="achievementsOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="achievementsTitle" hidden>
+		<section class="dialog">
+			<div class="dialog-heading">
+				<h2 id="achievementsTitle">Achievements</h2>
+				<button id="closeAchievements" class="dialog-btn" type="button">Close</button>
+			</div>
+			<div id="achievementList" class="achievement-list"></div>
+		</section>
+	</div>
+
+	<div id="wheelOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="wheelTitle" hidden>
+		<section class="dialog wheel-dialog">
+			<div class="dialog-heading">
+				<h2 id="wheelTitle">Daily Prize Wheel</h2>
+				<button id="closeWheel" class="dialog-btn" type="button">Close</button>
+			</div>
+			<p id="wheelCooldown" aria-live="polite">Ready to spin!</p>
+			<div class="wheel-wrap">
+				<div class="wheel-pointer" aria-hidden="true"></div>
+				<canvas id="prizeWheel" class="prize-wheel" width="360" height="360" aria-label="Prize wheel"></canvas>
+			</div>
+			<p id="wheelResult" class="wheel-result" aria-live="polite"></p>
+			<button id="spinWheel" class="dialog-btn" type="button">Spin</button>
+			<p class="wheel-odds">Odds: +10 points 35%, +100 points 30%, +1,000 points 22%, +10,000 points 9%, +100,000 points 3.5%, +1,000,000 points 0.45%, +1 rebirth 0.05%.</p>
 		</section>
 	</div>
 
@@ -568,7 +716,6 @@
 		const rebirthMultiplierEl = document.getElementById("rebirthMultiplier");
 		const playerNameEl = document.getElementById("playerName");
 		const offlineSummaryEl = document.getElementById("offlineSummary");
-		const rushHourStatusEl = document.getElementById("rushHourStatus");
 		const shopEl = document.getElementById("shop");
 		const toggleShopBtn = document.getElementById("toggleShop");
 		const loginOverlay = document.getElementById("loginOverlay");
@@ -578,6 +725,14 @@
 		const leaderboardOverlay = document.getElementById("leaderboardOverlay");
 		const leaderboardRows = document.getElementById("leaderboardRows");
 		const leaderboardStatus = document.getElementById("leaderboardStatus");
+		const achievementsOverlay = document.getElementById("achievementsOverlay");
+		const achievementList = document.getElementById("achievementList");
+		const wheelOverlay = document.getElementById("wheelOverlay");
+		const wheelCanvas = document.getElementById("prizeWheel");
+		const wheelContext = wheelCanvas.getContext("2d");
+		const wheelCooldownEl = document.getElementById("wheelCooldown");
+		const wheelResultEl = document.getElementById("wheelResult");
+		const spinWheelBtn = document.getElementById("spinWheel");
 		const commandPanel = document.getElementById("commandPanel");
 		const commandForm = document.getElementById("commandForm");
 		const commandInput = document.getElementById("commandInput");
@@ -603,6 +758,8 @@
 		let rebirthCount = 0;
 		let streakDays = 0;
 		let lastLoginDate = "";
+		let lastWheelAt = 0;
+		let wheelRotation = 0;
 		let lastSeenAt = Date.now();
 		let currentUsername = "";
 		let players = {};
@@ -615,6 +772,25 @@
 		const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
 		const FIRST_REBIRTH_COST = 100000000;
 		const REBIRTH_COST_STEP = 100000000;
+		const WHEEL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+		const WHEEL_PRIZES = [
+			{ label: "+10", description: "+10 points", reward: 10, weight: 3500, color: "#dc2626" },
+			{ label: "+100", description: "+100 points", reward: 100, weight: 3000, color: "#ea580c" },
+			{ label: "+1K", description: "+1,000 points", reward: 1000, weight: 2200, color: "#ca8a04" },
+			{ label: "+10K", description: "+10,000 points", reward: 10000, weight: 900, color: "#16a34a" },
+			{ label: "+100K", description: "+100,000 points", reward: 100000, weight: 350, color: "#0891b2" },
+			{ label: "+1M", description: "+1,000,000 points", reward: 1000000, weight: 45, color: "#2563eb" },
+			{ label: "+1 rebirth", description: "+1 rebirth", rebirth: 1, weight: 5, color: "#7c3aed" },
+		];
+		const ACHIEVEMENTS = [
+			{ id: "first_click", title: "First Click", description: "Click once.", requirement: (state) => (state.totalClicks || 0) >= 1 },
+			{ id: "first_rebirth", title: "Fresh Start", description: "Rebirth once.", requirement: (state) => (state.rebirthCount || 0) >= 1 },
+			{ id: "score_100k", title: "Rising Tycoon", description: "Reach 100,000 points.", requirement: (state) => (state.score || 0) >= 100000 },
+			{ id: "auto_10", title: "Automation Pro", description: "Own 10 auto clickers.", requirement: (state) => (state.autoClick || 0) >= 10 },
+			{ id: "streak_7", title: "7-Day Streak", description: "Reach a 7-day streak.", requirement: (state) => (state.streakDays || 0) >= 7 },
+			{ id: "worker_5", title: "Crew Captain", description: "Hire 5 workers.", requirement: (state) => (state.workerLevel || 0) >= 5 },
+			{ id: "rebirth_3", title: "Rebirth Veteran", description: "Reach 3 rebirths.", requirement: (state) => (state.rebirthCount || 0) >= 3 }
+		];
 
 		function getDefaultState() {
 			return {
@@ -636,6 +812,7 @@
 				rebirthCount: 0,
 				streakDays: 0,
 				lastLoginDate: "",
+				lastWheelAt: 0,
 				lastSeenAt: Date.now(),
 			};
 		}
@@ -661,15 +838,125 @@
 			rebirthCount = valueOrDefault(savedData.rebirthCount, defaults.rebirthCount);
 			streakDays = valueOrDefault(savedData.streakDays, defaults.streakDays);
 			lastLoginDate = typeof savedData.lastLoginDate === "string" ? savedData.lastLoginDate : defaults.lastLoginDate;
+			lastWheelAt = valueOrDefault(savedData.lastWheelAt, defaults.lastWheelAt);
 			lastSeenAt = valueOrDefault(savedData.lastSeenAt, Date.now());
 		}
 
 		function isRushHourActive() {
 			const now = new Date();
 			const minutes = now.getHours() * 60 + now.getMinutes();
-			const rushHourStart = 21 * 60;
-			const rushHourEnd = 22 * 60 + 30;
+			const rushHourStart = 9 * 60;
+			const rushHourEnd = 10 * 60 + 30;
 			return minutes >= rushHourStart && minutes < rushHourEnd;
+		}
+
+		function drawPrizeWheel() {
+			const center = wheelCanvas.width / 2;
+			const radius = center - 4;
+			const totalWeight = WHEEL_PRIZES.reduce((total, prize) => total + prize.weight, 0);
+			let startAngle = -Math.PI / 2;
+
+			wheelContext.clearRect(0, 0, wheelCanvas.width, wheelCanvas.height);
+			WHEEL_PRIZES.forEach((prize) => {
+				const endAngle = startAngle + (prize.weight / totalWeight) * Math.PI * 2;
+				const middleAngle = (startAngle + endAngle) / 2;
+				wheelContext.beginPath();
+				wheelContext.moveTo(center, center);
+				wheelContext.arc(center, center, radius, startAngle, endAngle);
+				wheelContext.closePath();
+				wheelContext.fillStyle = prize.color;
+				wheelContext.fill();
+				wheelContext.strokeStyle = "rgba(255, 255, 255, 0.8)";
+				wheelContext.lineWidth = 2;
+				wheelContext.stroke();
+				wheelContext.save();
+				wheelContext.translate(center, center);
+				wheelContext.rotate(middleAngle);
+				wheelContext.textAlign = "right";
+				wheelContext.textBaseline = "middle";
+				wheelContext.fillStyle = "#fff";
+				wheelContext.font = "bold 15px Arial";
+				wheelContext.shadowColor = "rgba(0, 0, 0, 0.65)";
+				wheelContext.shadowBlur = 3;
+				wheelContext.fillText(prize.label, radius - 16, 0);
+				wheelContext.restore();
+				startAngle = endAngle;
+			});
+
+			wheelContext.beginPath();
+			wheelContext.arc(center, center, 19, 0, Math.PI * 2);
+			wheelContext.fillStyle = "#fff";
+			wheelContext.fill();
+		}
+
+		function getWheelPrize() {
+			const totalWeight = WHEEL_PRIZES.reduce((total, prize) => total + prize.weight, 0);
+			let roll = Math.random() * totalWeight;
+			for (const prize of WHEEL_PRIZES) {
+				roll -= prize.weight;
+				if (roll < 0) return prize;
+			}
+			return WHEEL_PRIZES[WHEEL_PRIZES.length - 1];
+		}
+
+		function getWheelPrizeCenterDegrees(prize) {
+			const totalWeight = WHEEL_PRIZES.reduce((total, entry) => total + entry.weight, 0);
+			let passedWeight = 0;
+			for (const entry of WHEEL_PRIZES) {
+				if (entry === prize) return ((passedWeight + entry.weight / 2) / totalWeight) * 360;
+				passedWeight += entry.weight;
+			}
+			return 0;
+		}
+
+		function renderWheelCooldown() {
+			const remainingMs = Math.max(0, lastWheelAt + WHEEL_COOLDOWN_MS - Date.now());
+			spinWheelBtn.disabled = remainingMs > 0 || spinWheelBtn.dataset.spinning === "true";
+			if (remainingMs <= 0) {
+				wheelCooldownEl.textContent = "Ready to spin!";
+				return;
+			}
+
+			const totalSeconds = Math.ceil(remainingMs / 1000);
+			const hours = Math.floor(totalSeconds / 3600);
+			const minutes = Math.floor((totalSeconds % 3600) / 60);
+			const seconds = totalSeconds % 60;
+			wheelCooldownEl.textContent = `Next spin in ${hours}h ${minutes}m ${seconds}s.`;
+		}
+
+		function spinPrizeWheel() {
+			if (!currentUsername || Date.now() < lastWheelAt + WHEEL_COOLDOWN_MS || spinWheelBtn.dataset.spinning === "true") return;
+
+			const prize = getWheelPrize();
+			lastWheelAt = Date.now();
+			spinWheelBtn.dataset.spinning = "true";
+			wheelResultEl.textContent = "The wheel is spinning...";
+			renderWheelCooldown();
+			saveGame();
+
+			const prizeCenter = getWheelPrizeCenterDegrees(prize);
+			const currentAngle = wheelRotation % 360;
+			const landingOffset = (360 - ((prizeCenter + currentAngle) % 360)) % 360;
+			wheelRotation += 1800 + landingOffset;
+			wheelCanvas.style.transform = `rotate(${wheelRotation}deg)`;
+			wheelCanvas.addEventListener("transitionend", () => {
+				if (prize.rebirth) {
+					rebirthCount += prize.rebirth;
+				} else {
+					score += prize.reward;
+				}
+				spinWheelBtn.dataset.spinning = "false";
+				wheelResultEl.textContent = `You won ${prize.description}!`;
+				updateUI();
+			}, { once: true });
+		}
+
+		function getCurrentWeekKey() {
+			const now = new Date();
+			const start = new Date(now.getFullYear(), 0, 1);
+			const days = Math.floor((now - start) / 86400000);
+			const week = Math.ceil((days + start.getDay() + 1) / 7);
+			return `${now.getFullYear()}-W${week}`;
 		}
 
 		function getEarningMultiplier() {
@@ -766,6 +1053,9 @@
 			try {
 				const playerKey = currentUsername.toLowerCase();
 				lastSeenAt = Date.now();
+				const weeklyScore = Number(players[playerKey]?.state?.weeklyScore || 0);
+				const currentWeekKey = getCurrentWeekKey();
+				const savedWeekly = players[playerKey]?.state?.weeklyKey === currentWeekKey ? Math.max(weeklyScore, Math.floor(score)) : Math.floor(score);
 				players[playerKey] = {
 					username: currentUsername,
 					score,
@@ -789,7 +1079,12 @@
 						rebirthCount,
 						streakDays,
 						lastLoginDate,
+						lastWheelAt,
 						lastSeenAt,
+						weeklyScore: savedWeekly,
+						weeklyKey: currentWeekKey,
+						achievements: players[playerKey]?.state?.achievements || {},
+						totalClicks: (players[playerKey]?.state?.totalClicks || 0) + Math.max(0, Math.floor(score) - Math.floor(players[playerKey]?.state?.score || 0))
 					}
 				};
 				localStorage.setItem(PLAYERS_STORAGE_KEY, JSON.stringify(players));
@@ -912,15 +1207,29 @@
 			});
 		}
 
+		function getWeeklyLeaderboardEntries() {
+			const currentWeek = getCurrentWeekKey();
+			return Object.values(players)
+				.map((player) => {
+					const state = player?.state || {};
+					const weeklyScore = state.weeklyKey === currentWeek ? Number(state.weeklyScore || 0) : 0;
+					return {
+						username: player?.username || "",
+						score: weeklyScore,
+						rebirths: Number(state.rebirthCount || 0),
+					};
+				})
+				.filter((player) => player.username && player.score > 0);
+		}
+
 		async function showLeaderboard() {
 			saveGame();
 			leaderboardOverlay.hidden = false;
 			document.getElementById("closeLeaderboard").focus();
-			if (!isSharedLeaderboardConfigured()) {
-				leaderboardStatus.textContent = "Scores saved in this browser. Configure Supabase to share scores online.";
-				renderLeaderboard();
-				return;
-			}
+			const weeklyEntries = getWeeklyLeaderboardEntries();
+			leaderboardStatus.textContent = "Top players this week.";
+			renderLeaderboard(weeklyEntries.length > 0 ? weeklyEntries : Object.values(players));
+			if (!isSharedLeaderboardConfigured()) return;
 
 			leaderboardStatus.textContent = "Loading shared leaderboard...";
 			try {
@@ -931,7 +1240,7 @@
 			} catch (error) {
 				console.error(error);
 				leaderboardStatus.textContent = "Could not load online scores. Showing scores saved in this browser.";
-				renderLeaderboard();
+				renderLeaderboard(weeklyEntries.length > 0 ? weeklyEntries : Object.values(players));
 			}
 		}
 
@@ -988,13 +1297,67 @@
 		window.givePoints = gameCheats.givePoints;
 		window.setScore = gameCheats.setScore;
 
+		let rushHourBannerTimeout = null;
+		let rushHourWasActive = isRushHourActive();
+
+		function showRushHourBanner(message = "Rush Hour!") {
+			// Rush Hour remains a silent event: the multiplier is active without
+			// intrusive start/end banners on-screen.
+			const banner = document.getElementById("rushHourBanner");
+			if (!banner) return;
+			banner.classList.remove("visible");
+			clearTimeout(rushHourBannerTimeout);
+			rushHourBannerTimeout = null;
+		}
+
+		function getCurrentAchievements() {
+			const state = players[currentUsername.toLowerCase()]?.state || {};
+			return state.achievements || {};
+		}
+
+		function renderAchievements() {
+			const current = getCurrentAchievements();
+			achievementList.replaceChildren();
+			ACHIEVEMENTS.forEach((achievement) => {
+				const item = document.createElement("div");
+				item.className = `achievement-item ${current[achievement.id] ? "unlocked" : ""}`;
+				const title = document.createElement("h3");
+				title.textContent = current[achievement.id] ? `✅ ${achievement.title}` : achievement.title;
+				const description = document.createElement("p");
+				description.textContent = achievement.description;
+				item.append(title, description);
+				achievementList.append(item);
+			});
+		}
+
+		function unlockAchievements() {
+			if (!currentUsername) return;
+			const playerKey = currentUsername.toLowerCase();
+			const state = players[playerKey]?.state || {};
+			const unlocked = { ...(state.achievements || {}) };
+			ACHIEVEMENTS.forEach((achievement) => {
+				if (!unlocked[achievement.id] && achievement.requirement({
+					score,
+					autoClick,
+					workerLevel,
+					rebirthCount,
+					streakDays,
+					totalClicks: state.totalClicks || 0,
+				})) {
+					unlocked[achievement.id] = true;
+				}
+			});
+			if (players[playerKey]) {
+				players[playerKey].state.achievements = unlocked;
+			}
+			renderAchievements();
+		}
+
 		function updateUI() {
 			scoreEl.textContent = Math.floor(score);
 			autoScoreEl.textContent = Math.floor(autoClick * getEarningMultiplier());
-			rushHourStatusEl.textContent = isRushHourActive()
-				? "Rush Hour is active: all points earned are doubled from 9:00 PM to 10:30 PM."
-				: "Rush Hour starts at 9:00 PM and ends at 10:30 PM every day.";
-			rushHourStatusEl.style.color = isRushHourActive() ? "#facc15" : "#cbd5e1";
+			showRushHourBanner();
+			unlockAchievements();
 
 			cursorCostEl.textContent = cursorCost;
 			autoCostEl.textContent = autoCost;
@@ -1015,6 +1378,7 @@
 			buyBoostBtn.disabled = score < clickBoostCost;
 			buyGoldenBtn.disabled = score < goldenClickCost;
 			buyRebirthBtn.disabled = score < getRebirthCost();
+			renderWheelCooldown();
 			if (currentUsername) saveGame();
 		}
 
@@ -1163,10 +1527,32 @@
 		});
 
 		document.getElementById("openLeaderboard").addEventListener("click", showLeaderboard);
+		document.getElementById("openAchievements").addEventListener("click", () => {
+			renderAchievements();
+			achievementsOverlay.hidden = false;
+		});
+
+		document.getElementById("openWheel").addEventListener("click", () => {
+			wheelOverlay.hidden = false;
+			renderWheelCooldown();
+			document.getElementById("spinWheel").focus();
+		});
+
+		document.getElementById("closeWheel").addEventListener("click", () => {
+			wheelOverlay.hidden = true;
+			document.getElementById("openWheel").focus();
+		});
+
+		spinWheelBtn.addEventListener("click", spinPrizeWheel);
 
 		document.getElementById("closeLeaderboard").addEventListener("click", () => {
 			leaderboardOverlay.hidden = true;
 			document.getElementById("openLeaderboard").focus();
+		});
+
+		document.getElementById("closeAchievements").addEventListener("click", () => {
+			achievementsOverlay.hidden = true;
+			document.getElementById("openAchievements").focus();
 		});
 
 		leaderboardOverlay.addEventListener("click", (event) => {
@@ -1212,9 +1598,11 @@
 				score += autoClick * getEarningMultiplier();
 				updateUI();
 			}
+			renderWheelCooldown();
 			saveGame();
 		}, 1000);
 
+		drawPrizeWheel();
 		loadPlayers();
 		let rememberedUsername = "";
 		try {
