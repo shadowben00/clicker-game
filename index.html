@@ -70,8 +70,10 @@
 			display: flex;
 			align-items: center;
 			justify-content: flex-end;
+			flex-wrap: wrap;
 			gap: 10px;
 			margin-left: auto;
+			max-width: 100%;
 		}
 
 		.player-name {
@@ -197,6 +199,24 @@
 		.dialog-error {
 			min-height: 1.4em;
 			color: #fca5a5 !important;
+		}
+
+		.challenge-progress {
+			display: block;
+			width: 100%;
+			height: 18px;
+			margin: 18px 0 8px;
+			accent-color: var(--accent);
+		}
+
+		.challenge-progress-text {
+			font-weight: 700;
+		}
+
+		.challenge-result {
+			min-height: 1.5em;
+			color: var(--accent) !important;
+			font-weight: 700;
 		}
 
 		.wheel-dialog {
@@ -540,6 +560,8 @@
 				<button id="openLeaderboard" class="topbar-btn" type="button">Leaderboard</button>
 				<button id="openAchievements" class="topbar-btn" type="button">Achievements</button>
 				<button id="openWheel" class="topbar-btn" type="button">Prize Wheel</button>
+				<button id="openDailyChallenge" class="topbar-btn" type="button">Daily Challenge</button>
+				<button id="openWeeklyChallenge" class="topbar-btn" type="button">Weekly Challenge</button>
 			</div>
 		</div>
 		<p id="offlineSummary" class="offline-summary" aria-live="polite" hidden></p>
@@ -681,6 +703,34 @@
 		</section>
 	</div>
 
+	<div id="dailyChallengeOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="dailyChallengeTitle" hidden>
+		<section class="dialog">
+			<div class="dialog-heading">
+				<h2 id="dailyChallengeTitle">Daily Challenge</h2>
+				<button id="closeDailyChallenge" class="dialog-btn" type="button">Close</button>
+			</div>
+			<p>Make 100 clicks today to earn 10,000 points.</p>
+			<progress id="dailyChallengeProgress" class="challenge-progress" max="100" value="0" aria-label="Daily challenge progress"></progress>
+			<p id="dailyChallengeProgressText" class="challenge-progress-text">0 / 100 clicks</p>
+			<p id="dailyChallengeResult" class="challenge-result" aria-live="polite"></p>
+			<button id="claimDailyChallenge" class="dialog-btn" type="button" disabled>Claim 10,000 points</button>
+		</section>
+	</div>
+
+	<div id="weeklyChallengeOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="weeklyChallengeTitle" hidden>
+		<section class="dialog">
+			<div class="dialog-heading">
+				<h2 id="weeklyChallengeTitle">Weekly Challenge</h2>
+				<button id="closeWeeklyChallenge" class="dialog-btn" type="button">Close</button>
+			</div>
+			<p>Earn 250,000 points this week to earn 50,000 bonus points.</p>
+			<progress id="weeklyChallengeProgress" class="challenge-progress" max="250000" value="0" aria-label="Weekly challenge progress"></progress>
+			<p id="weeklyChallengeProgressText" class="challenge-progress-text">0 / 250,000 points earned</p>
+			<p id="weeklyChallengeResult" class="challenge-result" aria-live="polite"></p>
+			<button id="claimWeeklyChallenge" class="dialog-btn" type="button" disabled>Claim 50,000 points</button>
+		</section>
+	</div>
+
 	<div id="commandPanel" class="command-panel" hidden>
 		<form id="commandForm" class="command-form" autocomplete="off">
 			<input id="commandInput" type="text" aria-label="Game command" placeholder="game.givePoints(1000)" spellcheck="false" />
@@ -733,6 +783,16 @@
 		const wheelCooldownEl = document.getElementById("wheelCooldown");
 		const wheelResultEl = document.getElementById("wheelResult");
 		const spinWheelBtn = document.getElementById("spinWheel");
+		const dailyChallengeOverlay = document.getElementById("dailyChallengeOverlay");
+		const weeklyChallengeOverlay = document.getElementById("weeklyChallengeOverlay");
+		const dailyChallengeProgress = document.getElementById("dailyChallengeProgress");
+		const weeklyChallengeProgress = document.getElementById("weeklyChallengeProgress");
+		const dailyChallengeProgressText = document.getElementById("dailyChallengeProgressText");
+		const weeklyChallengeProgressText = document.getElementById("weeklyChallengeProgressText");
+		const dailyChallengeResult = document.getElementById("dailyChallengeResult");
+		const weeklyChallengeResult = document.getElementById("weeklyChallengeResult");
+		const claimDailyChallengeBtn = document.getElementById("claimDailyChallenge");
+		const claimWeeklyChallengeBtn = document.getElementById("claimWeeklyChallenge");
 		const commandPanel = document.getElementById("commandPanel");
 		const commandForm = document.getElementById("commandForm");
 		const commandInput = document.getElementById("commandInput");
@@ -760,6 +820,7 @@
 		let lastLoginDate = "";
 		let lastWheelAt = 0;
 		let wheelRotation = 0;
+		let challengeState = null;
 		let lastSeenAt = Date.now();
 		let currentUsername = "";
 		let players = {};
@@ -773,6 +834,10 @@
 		const FIRST_REBIRTH_COST = 100000000;
 		const REBIRTH_COST_STEP = 100000000;
 		const WHEEL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+		const DAILY_CHALLENGE_TARGET = 100;
+		const DAILY_CHALLENGE_REWARD = 10000;
+		const WEEKLY_CHALLENGE_TARGET = 250000;
+		const WEEKLY_CHALLENGE_REWARD = 50000;
 		const WHEEL_PRIZES = [
 			{ label: "+10", description: "+10 points", reward: 10, weight: 3500, color: "#dc2626" },
 			{ label: "+100", description: "+100 points", reward: 100, weight: 3000, color: "#ea580c" },
@@ -813,6 +878,7 @@
 				streakDays: 0,
 				lastLoginDate: "",
 				lastWheelAt: 0,
+				challenges: getDefaultChallengeState(),
 				lastSeenAt: Date.now(),
 			};
 		}
@@ -839,6 +905,7 @@
 			streakDays = valueOrDefault(savedData.streakDays, defaults.streakDays);
 			lastLoginDate = typeof savedData.lastLoginDate === "string" ? savedData.lastLoginDate : defaults.lastLoginDate;
 			lastWheelAt = valueOrDefault(savedData.lastWheelAt, defaults.lastWheelAt);
+			challengeState = normalizeChallengeState(savedData.challenges);
 			lastSeenAt = valueOrDefault(savedData.lastSeenAt, Date.now());
 		}
 
@@ -944,6 +1011,7 @@
 					rebirthCount += prize.rebirth;
 				} else {
 					score += prize.reward;
+					recordChallengePoints(prize.reward);
 				}
 				spinWheelBtn.dataset.spinning = "false";
 				wheelResultEl.textContent = `You won ${prize.description}!`;
@@ -957,6 +1025,102 @@
 			const days = Math.floor((now - start) / 86400000);
 			const week = Math.ceil((days + start.getDay() + 1) / 7);
 			return `${now.getFullYear()}-W${week}`;
+		}
+
+		function getCurrentDayKey() {
+			const now = new Date();
+			return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+		}
+
+		function getDefaultChallengeState() {
+			return {
+				dailyKey: getCurrentDayKey(),
+				dailyClicks: 0,
+				dailyClaimed: false,
+				weeklyKey: getCurrentWeekKey(),
+				weeklyPoints: 0,
+				weeklyClaimed: false,
+			};
+		}
+
+		function normalizeChallengeState(savedState) {
+			const defaults = getDefaultChallengeState();
+			if (!savedState || typeof savedState !== "object") return defaults;
+			const isCurrentDay = savedState.dailyKey === defaults.dailyKey;
+			const isCurrentWeek = savedState.weeklyKey === defaults.weeklyKey;
+			const savedDailyClicks = Number(savedState.dailyClicks);
+			const savedWeeklyPoints = Number(savedState.weeklyPoints);
+			return {
+				dailyKey: defaults.dailyKey,
+				dailyClicks: isCurrentDay && Number.isFinite(savedDailyClicks) ? Math.min(DAILY_CHALLENGE_TARGET, Math.max(0, Math.floor(savedDailyClicks))) : 0,
+				dailyClaimed: isCurrentDay && savedState.dailyClaimed === true,
+				weeklyKey: defaults.weeklyKey,
+				weeklyPoints: isCurrentWeek && Number.isFinite(savedWeeklyPoints) ? Math.min(WEEKLY_CHALLENGE_TARGET, Math.max(0, savedWeeklyPoints)) : 0,
+				weeklyClaimed: isCurrentWeek && savedState.weeklyClaimed === true,
+			};
+		}
+
+		function refreshChallengePeriods() {
+			const currentDay = getCurrentDayKey();
+			const currentWeek = getCurrentWeekKey();
+			if (!challengeState) challengeState = getDefaultChallengeState();
+			if (challengeState.dailyKey !== currentDay) {
+				challengeState.dailyKey = currentDay;
+				challengeState.dailyClicks = 0;
+				challengeState.dailyClaimed = false;
+			}
+			if (challengeState.weeklyKey !== currentWeek) {
+				challengeState.weeklyKey = currentWeek;
+				challengeState.weeklyPoints = 0;
+				challengeState.weeklyClaimed = false;
+			}
+		}
+
+		function renderChallenges() {
+			refreshChallengePeriods();
+			const dailyClicks = challengeState.dailyClicks;
+			const weeklyPoints = challengeState.weeklyPoints;
+			const dailyComplete = dailyClicks >= DAILY_CHALLENGE_TARGET;
+			const weeklyComplete = weeklyPoints >= WEEKLY_CHALLENGE_TARGET;
+
+			dailyChallengeProgress.value = dailyClicks;
+			dailyChallengeProgressText.textContent = `${dailyClicks} / ${DAILY_CHALLENGE_TARGET} clicks`;
+			dailyChallengeResult.textContent = challengeState.dailyClaimed ? "Daily reward claimed." : dailyComplete ? "Challenge complete. Claim your reward!" : "Progress resets each day.";
+			claimDailyChallengeBtn.disabled = !currentUsername || !dailyComplete || challengeState.dailyClaimed;
+			claimDailyChallengeBtn.textContent = challengeState.dailyClaimed ? "Reward claimed" : `Claim ${new Intl.NumberFormat().format(DAILY_CHALLENGE_REWARD)} points`;
+
+			weeklyChallengeProgress.value = Math.floor(weeklyPoints);
+			weeklyChallengeProgressText.textContent = `${new Intl.NumberFormat().format(Math.floor(weeklyPoints))} / ${new Intl.NumberFormat().format(WEEKLY_CHALLENGE_TARGET)} points earned`;
+			weeklyChallengeResult.textContent = challengeState.weeklyClaimed ? "Weekly reward claimed." : weeklyComplete ? "Challenge complete. Claim your reward!" : "Progress resets each week.";
+			claimWeeklyChallengeBtn.disabled = !currentUsername || !weeklyComplete || challengeState.weeklyClaimed;
+			claimWeeklyChallengeBtn.textContent = challengeState.weeklyClaimed ? "Reward claimed" : `Claim ${new Intl.NumberFormat().format(WEEKLY_CHALLENGE_REWARD)} points`;
+		}
+
+		function recordChallengeClick() {
+			if (!currentUsername) return;
+			refreshChallengePeriods();
+			challengeState.dailyClicks = Math.min(DAILY_CHALLENGE_TARGET, challengeState.dailyClicks + 1);
+		}
+
+		function recordChallengePoints(amount) {
+			if (!currentUsername || !Number.isFinite(amount) || amount <= 0) return;
+			refreshChallengePeriods();
+			challengeState.weeklyPoints = Math.min(WEEKLY_CHALLENGE_TARGET, challengeState.weeklyPoints + amount);
+		}
+
+		function claimChallenge(period) {
+			if (!currentUsername) return;
+			refreshChallengePeriods();
+			if (period === "daily" && challengeState.dailyClicks >= DAILY_CHALLENGE_TARGET && !challengeState.dailyClaimed) {
+				challengeState.dailyClaimed = true;
+				score += DAILY_CHALLENGE_REWARD;
+			} else if (period === "weekly" && challengeState.weeklyPoints >= WEEKLY_CHALLENGE_TARGET && !challengeState.weeklyClaimed) {
+				challengeState.weeklyClaimed = true;
+				score += WEEKLY_CHALLENGE_REWARD;
+			} else {
+				return;
+			}
+			updateUI();
 		}
 
 		function getEarningMultiplier() {
@@ -1080,6 +1244,7 @@
 						streakDays,
 						lastLoginDate,
 						lastWheelAt,
+						challenges: challengeState || getDefaultChallengeState(),
 						lastSeenAt,
 						weeklyScore: savedWeekly,
 						weeklyKey: currentWeekKey,
@@ -1155,6 +1320,7 @@
 			const loginReward = getDailyLoginReward();
 			if (loginReward > 0) {
 				score += loginReward;
+				recordChallengePoints(loginReward);
 				offlineSummaryEl.hidden = false;
 				offlineSummaryEl.textContent = `Daily login streak: ${streakDays} day${streakDays === 1 ? "" : "s"}! +${new Intl.NumberFormat().format(loginReward)} points.`;
 			} else {
@@ -1163,6 +1329,7 @@
 			const awaySeconds = Math.max(0, (Date.now() - lastSeenAt) / 1000);
 			const offlineEarnings = Math.floor(awaySeconds * offlineClick * getEarningMultiplier());
 			score += offlineEarnings;
+			recordChallengePoints(offlineEarnings);
 			if (offlineEarnings > 0) {
 				offlineSummaryEl.hidden = false;
 				offlineSummaryEl.textContent = `Welcome back! Your Offline Clicker earned ${new Intl.NumberFormat().format(offlineEarnings)} points.`;
@@ -1246,12 +1413,16 @@
 
 		const gameCheats = {
 			givePoints(amount = 1000) {
-				score += Number(amount) || 0;
+				const points = Number(amount) || 0;
+				score += points;
+				recordChallengePoints(points);
 				updateUI();
 				return score;
 			},
 			setScore(value = 0) {
-				score = Number(value) || 0;
+				const newScore = Number(value) || 0;
+				recordChallengePoints(newScore - score);
+				score = newScore;
 				updateUI();
 				return score;
 			},
@@ -1384,11 +1555,13 @@
 			buyGoldenBtn.disabled = score < goldenClickCost;
 			buyRebirthBtn.disabled = score < getRebirthCost();
 			renderWheelCooldown();
+			renderChallenges();
 			if (currentUsername) saveGame();
 		}
 
 		function addScore(amount) {
 			score += amount;
+			recordChallengePoints(amount);
 			updateUI();
 		}
 
@@ -1397,6 +1570,7 @@
 			const baseGain = clickPower * getEarningMultiplier();
 			const goldenBurst = goldenClickLevel > 0 && Math.random() < Math.min(0.5, goldenClickLevel * 0.08);
 			const gain = goldenBurst ? baseGain * (1 + goldenClickLevel * 0.5) : baseGain;
+			recordChallengeClick();
 			addScore(gain);
 		}
 
@@ -1543,6 +1717,31 @@
 			document.getElementById("spinWheel").focus();
 		});
 
+		document.getElementById("openDailyChallenge").addEventListener("click", () => {
+			renderChallenges();
+			dailyChallengeOverlay.hidden = false;
+			claimDailyChallengeBtn.focus();
+		});
+
+		document.getElementById("openWeeklyChallenge").addEventListener("click", () => {
+			renderChallenges();
+			weeklyChallengeOverlay.hidden = false;
+			claimWeeklyChallengeBtn.focus();
+		});
+
+		document.getElementById("closeDailyChallenge").addEventListener("click", () => {
+			dailyChallengeOverlay.hidden = true;
+			document.getElementById("openDailyChallenge").focus();
+		});
+
+		document.getElementById("closeWeeklyChallenge").addEventListener("click", () => {
+			weeklyChallengeOverlay.hidden = true;
+			document.getElementById("openWeeklyChallenge").focus();
+		});
+
+		claimDailyChallengeBtn.addEventListener("click", () => claimChallenge("daily"));
+		claimWeeklyChallengeBtn.addEventListener("click", () => claimChallenge("weekly"));
+
 		document.getElementById("closeWheel").addEventListener("click", () => {
 			wheelOverlay.hidden = true;
 			document.getElementById("openWheel").focus();
@@ -1600,9 +1799,13 @@
 
 		setInterval(() => {
 			if (autoClick > 0) {
-				score += autoClick * getEarningMultiplier();
+				const autoEarnings = autoClick * getEarningMultiplier();
+				score += autoEarnings;
+				recordChallengePoints(autoEarnings);
 				updateUI();
 			}
+			refreshChallengePeriods();
+			renderChallenges();
 			renderWheelCooldown();
 			saveGame();
 		}, 1000);
