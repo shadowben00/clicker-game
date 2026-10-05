@@ -322,6 +322,52 @@
 			cursor: not-allowed;
 		}
 
+		.coinflip-dialog {
+			text-align: center;
+		}
+
+		.coinflip-choice-group {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 12px;
+			margin: 18px 0 16px;
+		}
+
+		.coinflip-choice {
+			padding: 14px 12px;
+			border: 1px solid rgba(255, 255, 255, 0.18);
+			border-radius: 10px;
+			background: rgba(255, 255, 255, 0.04);
+			color: var(--text);
+			font: inherit;
+			font-weight: 800;
+			cursor: pointer;
+		}
+
+		.coinflip-choice.active {
+			background: rgba(250, 204, 21, 0.18);
+			border-color: rgba(250, 204, 21, 0.7);
+			color: #fef3c7;
+		}
+
+		.coinflip-form {
+			display: flex;
+			gap: 10px;
+			margin-top: 0;
+		}
+
+		.coinflip-form input {
+			min-width: 0;
+			flex: 1;
+		}
+
+		.coinflip-result {
+			min-height: 1.5em;
+			margin-top: 18px;
+			font-weight: 800;
+			color: var(--accent) !important;
+		}
+
 		.dialog-heading {
 			display: flex;
 			justify-content: space-between;
@@ -613,6 +659,7 @@
 				<button id="openDailyChallenge" class="topbar-btn" type="button">Daily Challenge</button>
 				<button id="openWeeklyChallenge" class="topbar-btn" type="button">Weekly Challenge</button>
 				<button id="openAreas" class="topbar-btn" type="button">Areas</button>
+				<button id="openCoinFlip" class="topbar-btn" type="button">Coin Flip</button>
 			</div>
 		</div>
 		<p id="offlineSummary" class="offline-summary" aria-live="polite" hidden></p>
@@ -794,6 +841,25 @@
 		</section>
 	</div>
 
+	<div id="coinFlipOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="coinFlipTitle" hidden>
+		<section class="dialog coinflip-dialog">
+			<div class="dialog-heading">
+				<h2 id="coinFlipTitle">Coin Flip</h2>
+				<button id="closeCoinFlip" class="dialog-btn" type="button">Close</button>
+			</div>
+			<p>Pick heads or tails and bet your points. Win doubles your stake; lose your bet is taken.</p>
+			<div class="coinflip-choice-group">
+				<button class="coinflip-choice active" type="button" data-coin-side="heads">Heads</button>
+				<button class="coinflip-choice" type="button" data-coin-side="tails">Tails</button>
+			</div>
+			<form id="coinFlipForm" class="coinflip-form">
+				<input id="coinFlipBet" type="number" min="1" step="1" placeholder="Bet points" required />
+				<button class="dialog-btn" type="submit">Flip</button>
+			</form>
+			<p id="coinFlipStatus" class="coinflip-result" aria-live="polite"></p>
+		</section>
+	</div>
+
 	<div id="commandPanel" class="command-panel" hidden>
 		<form id="commandForm" class="command-form" autocomplete="off">
 			<input id="commandInput" type="text" aria-label="Game command" placeholder="game.givePoints(1000)" spellcheck="false" />
@@ -859,6 +925,13 @@
 		const areasOverlay = document.getElementById("areasOverlay");
 		const areaList = document.getElementById("areaList");
 		const currentAreaLabel = document.getElementById("currentAreaLabel");
+		const coinFlipOverlay = document.getElementById("coinFlipOverlay");
+		const coinFlipForm = document.getElementById("coinFlipForm");
+		const coinFlipBetInput = document.getElementById("coinFlipBet");
+		const coinFlipStatus = document.getElementById("coinFlipStatus");
+		const coinFlipChoices = [...document.querySelectorAll(".coinflip-choice")];
+		const coinFlipCloseBtn = document.getElementById("closeCoinFlip");
+		const openCoinFlipBtn = document.getElementById("openCoinFlip");
 		const gameEl = document.querySelector(".game");
 		const commandPanel = document.getElementById("commandPanel");
 		const commandForm = document.getElementById("commandForm");
@@ -894,6 +967,7 @@
 		let currentUsername = "";
 		let players = {};
 		let onlineSaveTimer = null;
+		let selectedCoinSide = "heads";
 
 		const STORAGE_KEY = "clickerGameSave";
 		const PLAYERS_STORAGE_KEY = "clickerGamePlayers";
@@ -913,7 +987,7 @@
 			{ id: "neon-district", name: "Neon District", description: "A bright city where clicks come faster.", cost: 1000000, multiplier: 1.5, color: "#06b6d4", darkColor: "#0e7490", accent: "#67e8f9" },
 			{ id: "moon-base", name: "Moon Base", description: "Low gravity, high-yield clicking.", cost: 10000000, multiplier: 2, color: "#64748b", darkColor: "#475569", accent: "#e2e8f0" },
 			{ id: "volcanic-ridge", name: "Volcanic Ridge", description: "A hot zone for serious point production.", cost: 100000000, multiplier: 3.5, color: "#f97316", darkColor: "#c2410c", accent: "#fdba74" },
-			{ id: "star-harbor", name: "Star Harbor", description: "The far edge of Clickbound, with the biggest boost.", cost: 1000000000, multiplier: 5, color: "#e11d48", darkColor: "#9f1239", accent: "#fda4af" },
+			{ id: "star-harbor", name: "Star Harbor", description: "The far edge of Clickbound, with the biggest boost.", cost: 1000000000, multiplier: 5, color: "#e11d48", darkColor: "#9f1239", accent: "#fda4af" }
 		];
 		const WHEEL_PRIZES = [
 			{ label: "+10", description: "+10 points", reward: 10, weight: 3500, color: "#dc2626" },
@@ -933,6 +1007,65 @@
 			{ id: "worker_5", title: "Crew Captain", description: "Hire 5 workers.", requirement: (state) => (state.workerLevel || 0) >= 5 },
 			{ id: "rebirth_3", title: "Rebirth Veteran", description: "Reach 3 rebirths.", requirement: (state) => (state.rebirthCount || 0) >= 3 }
 		];
+
+		function formatPoints(value) {
+			return new Intl.NumberFormat("en-US").format(Math.max(0, Math.floor(Number(value) || 0)));
+		}
+
+		function openCoinFlip() {
+			coinFlipOverlay.hidden = false;
+			coinFlipBetInput.focus();
+		}
+
+		function closeCoinFlip() {
+			coinFlipOverlay.hidden = true;
+			coinFlipStatus.textContent = "";
+		}
+
+		function setCoinSide(side) {
+			selectedCoinSide = side;
+			coinFlipChoices.forEach((button) => {
+				const isActive = button.dataset.coinSide === side;
+				button.classList.toggle("active", isActive);
+			});
+		}
+
+		function flipCoin() {
+			const betAmount = Number(coinFlipBetInput.value);
+			if (!Number.isFinite(betAmount) || betAmount <= 0) {
+				coinFlipStatus.textContent = "Enter a valid bet greater than 0.";
+				return;
+			}
+			if (betAmount > score) {
+				coinFlipStatus.textContent = "You do not have enough points for that bet.";
+				return;
+			}
+
+			const resultSide = Math.random() < 0.5 ? "heads" : "tails";
+			const won = resultSide === selectedCoinSide;
+			score -= betAmount;
+			if (won) {
+				score += betAmount * 2;
+				coinFlipStatus.textContent = `You picked ${selectedCoinSide}! The coin landed on ${resultSide}. You won ${formatPoints(betAmount)} points.`;
+			} else {
+				coinFlipStatus.textContent = `You picked ${selectedCoinSide}! The coin landed on ${resultSide}. You lost ${formatPoints(betAmount)} points.`;
+			}
+			updateScore();
+			if (typeof saveGame === "function") {
+				saveGame();
+			}
+			coinFlipBetInput.value = "";
+		}
+
+		openCoinFlipBtn.addEventListener("click", openCoinFlip);
+		coinFlipCloseBtn.addEventListener("click", closeCoinFlip);
+		coinFlipChoices.forEach((button) => {
+			button.addEventListener("click", () => setCoinSide(button.dataset.coinSide));
+		});
+		coinFlipForm.addEventListener("submit", (event) => {
+			event.preventDefault();
+			flipCoin();
+		});
 
 		function getDefaultState() {
 			return {
@@ -997,1031 +1130,6 @@
 			const rushHourStart = 9 * 60;
 			const rushHourEnd = 10 * 60 + 30;
 			return minutes >= rushHourStart && minutes < rushHourEnd;
-		}
-
-		function drawPrizeWheel() {
-			const center = wheelCanvas.width / 2;
-			const radius = center - 4;
-			const totalWeight = WHEEL_PRIZES.reduce((total, prize) => total + prize.weight, 0);
-			let startAngle = -Math.PI / 2;
-
-			wheelContext.clearRect(0, 0, wheelCanvas.width, wheelCanvas.height);
-			WHEEL_PRIZES.forEach((prize) => {
-				const endAngle = startAngle + (prize.weight / totalWeight) * Math.PI * 2;
-				const middleAngle = (startAngle + endAngle) / 2;
-				wheelContext.beginPath();
-				wheelContext.moveTo(center, center);
-				wheelContext.arc(center, center, radius, startAngle, endAngle);
-				wheelContext.closePath();
-				wheelContext.fillStyle = prize.color;
-				wheelContext.fill();
-				wheelContext.strokeStyle = "rgba(255, 255, 255, 0.8)";
-				wheelContext.lineWidth = 2;
-				wheelContext.stroke();
-				wheelContext.save();
-				wheelContext.translate(center, center);
-				wheelContext.rotate(middleAngle);
-				wheelContext.textAlign = "right";
-				wheelContext.textBaseline = "middle";
-				wheelContext.fillStyle = "#fff";
-				wheelContext.font = "bold 15px Arial";
-				wheelContext.shadowColor = "rgba(0, 0, 0, 0.65)";
-				wheelContext.shadowBlur = 3;
-				wheelContext.fillText(prize.label, radius - 16, 0);
-				wheelContext.restore();
-				startAngle = endAngle;
-			});
-
-			wheelContext.beginPath();
-			wheelContext.arc(center, center, 19, 0, Math.PI * 2);
-			wheelContext.fillStyle = "#fff";
-			wheelContext.fill();
-		}
-
-		function getWheelPrize() {
-			const totalWeight = WHEEL_PRIZES.reduce((total, prize) => total + prize.weight, 0);
-			let roll = Math.random() * totalWeight;
-			for (const prize of WHEEL_PRIZES) {
-				roll -= prize.weight;
-				if (roll < 0) return prize;
-			}
-			return WHEEL_PRIZES[WHEEL_PRIZES.length - 1];
-		}
-
-		function getWheelPrizeCenterDegrees(prize) {
-			const totalWeight = WHEEL_PRIZES.reduce((total, entry) => total + entry.weight, 0);
-			let passedWeight = 0;
-			for (const entry of WHEEL_PRIZES) {
-				if (entry === prize) return ((passedWeight + entry.weight / 2) / totalWeight) * 360;
-				passedWeight += entry.weight;
-			}
-			return 0;
-		}
-
-		function renderWheelCooldown() {
-			const remainingMs = Math.max(0, lastWheelAt + WHEEL_COOLDOWN_MS - Date.now());
-			spinWheelBtn.disabled = remainingMs > 0 || spinWheelBtn.dataset.spinning === "true";
-			if (remainingMs <= 0) {
-				wheelCooldownEl.textContent = "Ready to spin!";
-				return;
-			}
-
-			const totalSeconds = Math.ceil(remainingMs / 1000);
-			const hours = Math.floor(totalSeconds / 3600);
-			const minutes = Math.floor((totalSeconds % 3600) / 60);
-			const seconds = totalSeconds % 60;
-			wheelCooldownEl.textContent = `Next spin in ${hours}h ${minutes}m ${seconds}s.`;
-		}
-
-		function spinPrizeWheel() {
-			if (!currentUsername || Date.now() < lastWheelAt + WHEEL_COOLDOWN_MS || spinWheelBtn.dataset.spinning === "true") return;
-
-			const prize = getWheelPrize();
-			lastWheelAt = Date.now();
-			spinWheelBtn.dataset.spinning = "true";
-			wheelResultEl.textContent = "The wheel is spinning...";
-			renderWheelCooldown();
-			saveGame();
-
-			const prizeCenter = getWheelPrizeCenterDegrees(prize);
-			const currentAngle = wheelRotation % 360;
-			const landingOffset = (360 - ((prizeCenter + currentAngle) % 360)) % 360;
-			wheelRotation += 1800 + landingOffset;
-			wheelCanvas.style.transform = `rotate(${wheelRotation}deg)`;
-			wheelCanvas.addEventListener("transitionend", () => {
-				if (prize.rebirth) {
-					rebirthCount += prize.rebirth;
-				} else {
-					score += prize.reward;
-					recordChallengePoints(prize.reward);
-				}
-				spinWheelBtn.dataset.spinning = "false";
-				wheelResultEl.textContent = `You won ${prize.description}!`;
-				updateUI();
-			}, { once: true });
-		}
-
-		function getCurrentWeekKey() {
-			const now = new Date();
-			const start = new Date(now.getFullYear(), 0, 1);
-			const days = Math.floor((now - start) / 86400000);
-			const week = Math.ceil((days + start.getDay() + 1) / 7);
-			return `${now.getFullYear()}-W${week}`;
-		}
-
-		function getCurrentDayKey() {
-			const now = new Date();
-			return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-		}
-
-		function getDefaultChallengeState() {
-			return {
-				dailyKey: getCurrentDayKey(),
-				dailyClicks: 0,
-				dailyClaimed: false,
-				weeklyKey: getCurrentWeekKey(),
-				weeklyPoints: 0,
-				weeklyClaimed: false,
-			};
-		}
-
-		function normalizeChallengeState(savedState) {
-			const defaults = getDefaultChallengeState();
-			if (!savedState || typeof savedState !== "object") return defaults;
-			const isCurrentDay = savedState.dailyKey === defaults.dailyKey;
-			const isCurrentWeek = savedState.weeklyKey === defaults.weeklyKey;
-			const savedDailyClicks = Number(savedState.dailyClicks);
-			const savedWeeklyPoints = Number(savedState.weeklyPoints);
-			return {
-				dailyKey: defaults.dailyKey,
-				dailyClicks: isCurrentDay && Number.isFinite(savedDailyClicks) ? Math.min(DAILY_CHALLENGE_TARGET, Math.max(0, Math.floor(savedDailyClicks))) : 0,
-				dailyClaimed: isCurrentDay && savedState.dailyClaimed === true,
-				weeklyKey: defaults.weeklyKey,
-				weeklyPoints: isCurrentWeek && Number.isFinite(savedWeeklyPoints) ? Math.min(WEEKLY_CHALLENGE_TARGET, Math.max(0, savedWeeklyPoints)) : 0,
-				weeklyClaimed: isCurrentWeek && savedState.weeklyClaimed === true,
-			};
-		}
-
-		function refreshChallengePeriods() {
-			const currentDay = getCurrentDayKey();
-			const currentWeek = getCurrentWeekKey();
-			if (!challengeState) challengeState = getDefaultChallengeState();
-			if (challengeState.dailyKey !== currentDay) {
-				challengeState.dailyKey = currentDay;
-				challengeState.dailyClicks = 0;
-				challengeState.dailyClaimed = false;
-			}
-			if (challengeState.weeklyKey !== currentWeek) {
-				challengeState.weeklyKey = currentWeek;
-				challengeState.weeklyPoints = 0;
-				challengeState.weeklyClaimed = false;
-			}
-		}
-
-		function renderChallenges() {
-			refreshChallengePeriods();
-			const dailyClicks = challengeState.dailyClicks;
-			const weeklyPoints = challengeState.weeklyPoints;
-			const dailyComplete = dailyClicks >= DAILY_CHALLENGE_TARGET;
-			const weeklyComplete = weeklyPoints >= WEEKLY_CHALLENGE_TARGET;
-
-			dailyChallengeProgress.value = dailyClicks;
-			dailyChallengeProgressText.textContent = `${dailyClicks} / ${DAILY_CHALLENGE_TARGET} clicks`;
-			dailyChallengeResult.textContent = challengeState.dailyClaimed ? "Daily reward claimed." : dailyComplete ? "Challenge complete. Claim your reward!" : "Progress resets each day.";
-			claimDailyChallengeBtn.disabled = !currentUsername || !dailyComplete || challengeState.dailyClaimed;
-			claimDailyChallengeBtn.textContent = challengeState.dailyClaimed ? "Reward claimed" : `Claim ${new Intl.NumberFormat().format(DAILY_CHALLENGE_REWARD)} points`;
-
-			weeklyChallengeProgress.value = Math.floor(weeklyPoints);
-			weeklyChallengeProgressText.textContent = `${new Intl.NumberFormat().format(Math.floor(weeklyPoints))} / ${new Intl.NumberFormat().format(WEEKLY_CHALLENGE_TARGET)} points earned`;
-			weeklyChallengeResult.textContent = challengeState.weeklyClaimed ? "Weekly reward claimed." : weeklyComplete ? "Challenge complete. Claim your reward!" : "Progress resets each week.";
-			claimWeeklyChallengeBtn.disabled = !currentUsername || !weeklyComplete || challengeState.weeklyClaimed;
-			claimWeeklyChallengeBtn.textContent = challengeState.weeklyClaimed ? "Reward claimed" : `Claim ${new Intl.NumberFormat().format(WEEKLY_CHALLENGE_REWARD)} points`;
-		}
-
-		function recordChallengeClick() {
-			if (!currentUsername) return;
-			refreshChallengePeriods();
-			challengeState.dailyClicks = Math.min(DAILY_CHALLENGE_TARGET, challengeState.dailyClicks + 1);
-		}
-
-		function recordChallengePoints(amount) {
-			if (!currentUsername || !Number.isFinite(amount) || amount <= 0) return;
-			refreshChallengePeriods();
-			challengeState.weeklyPoints = Math.min(WEEKLY_CHALLENGE_TARGET, challengeState.weeklyPoints + amount);
-		}
-
-		function getCurrentArea() {
-			return AREAS.find((area) => area.id === currentAreaId) || AREAS[0];
-		}
-
-		function renderAreas() {
-			const currentArea = getCurrentArea();
-			gameEl.dataset.area = currentArea.id;
-			gameEl.style.setProperty("--primary", currentArea.color);
-			gameEl.style.setProperty("--primary-dark", currentArea.darkColor);
-			gameEl.style.setProperty("--accent", currentArea.accent);
-			currentAreaLabel.textContent = `Current area: ${currentArea.name} (x${currentArea.multiplier} area boost)`;
-			areaList.replaceChildren();
-
-			AREAS.forEach((area) => {
-				const isUnlocked = unlockedAreas.includes(area.id);
-				const isCurrent = currentAreaId === area.id;
-				const item = document.createElement("section");
-				item.className = "area-item";
-				item.style.setProperty("--area-color", area.color);
-				const title = document.createElement("h3");
-				title.textContent = area.name;
-				const description = document.createElement("p");
-				description.textContent = area.description;
-				const details = document.createElement("p");
-				details.textContent = `Earnings multiplier here: x${area.multiplier}`;
-				const action = document.createElement("button");
-				action.className = "dialog-btn";
-				action.type = "button";
-				if (isCurrent) {
-					action.textContent = "Current area";
-					action.disabled = true;
-				} else if (isUnlocked) {
-					action.textContent = "Travel";
-					action.dataset.areaAction = "travel";
-					action.dataset.areaId = area.id;
-				} else {
-					action.textContent = `Unlock (${new Intl.NumberFormat().format(area.cost)} points)`;
-					action.disabled = !currentUsername || score < area.cost;
-					action.dataset.areaAction = "unlock";
-					action.dataset.areaId = area.id;
-				}
-				item.append(title, description, details, action);
-				areaList.append(item);
-			});
-		}
-
-		function handleAreaAction(event) {
-			const actionButton = event.target.closest("button[data-area-action]");
-			if (!actionButton || !currentUsername) return;
-			const area = AREAS.find((entry) => entry.id === actionButton.dataset.areaId);
-			if (!area) return;
-
-			if (actionButton.dataset.areaAction === "unlock") {
-				if (unlockedAreas.includes(area.id) || score < area.cost) return;
-				score -= area.cost;
-				unlockedAreas.push(area.id);
-				currentAreaId = area.id;
-			} else if (actionButton.dataset.areaAction === "travel" && unlockedAreas.includes(area.id)) {
-				currentAreaId = area.id;
-			} else {
-				return;
-			}
-			updateUI();
-		}
-
-		function claimChallenge(period) {
-			if (!currentUsername) return;
-			refreshChallengePeriods();
-			if (period === "daily" && challengeState.dailyClicks >= DAILY_CHALLENGE_TARGET && !challengeState.dailyClaimed) {
-				challengeState.dailyClaimed = true;
-				score += DAILY_CHALLENGE_REWARD;
-			} else if (period === "weekly" && challengeState.weeklyPoints >= WEEKLY_CHALLENGE_TARGET && !challengeState.weeklyClaimed) {
-				challengeState.weeklyClaimed = true;
-				score += WEEKLY_CHALLENGE_REWARD;
-			} else {
-				return;
-			}
-			updateUI();
-		}
-
-		function getEarningMultiplier() {
-			const rushMultiplier = isRushHourActive() ? 2 : 1;
-			const currentArea = AREAS.find((area) => area.id === currentAreaId) || AREAS[0];
-			return (rebirthCount + 1) * (1 + clickBoostLevel * 0.25 + workerLevel * 0.12) * currentArea.multiplier * rushMultiplier;
-		}
-
-		function getRebirthCost() {
-			return FIRST_REBIRTH_COST + rebirthCount * REBIRTH_COST_STEP;
-		}
-
-		function normalizeUsername(username) {
-			return typeof username === "string" ? username.trim().replace(/\s+/g, " ") : "";
-		}
-
-		function getUsernameKey(username) {
-			return normalizeUsername(username).toLowerCase();
-		}
-
-		function isUsernameTaken(username, ignoreCurrentUsername = "") {
-			const normalizedUsername = normalizeUsername(username);
-			if (!normalizedUsername) return false;
-
-			const targetKey = getUsernameKey(normalizedUsername);
-			const ignoredKey = ignoreCurrentUsername ? getUsernameKey(ignoreCurrentUsername) : "";
-			if (ignoredKey && ignoredKey === targetKey) return false;
-			return Object.prototype.hasOwnProperty.call(players, targetKey);
-		}
-
-		function loadPlayers() {
-			try {
-				const savedPlayers = JSON.parse(localStorage.getItem(PLAYERS_STORAGE_KEY));
-				if (savedPlayers && typeof savedPlayers === "object" && !Array.isArray(savedPlayers)) {
-					players = savedPlayers;
-				}
-			} catch (error) {
-				console.warn("Failed to load player saves:", error);
-			}
-		}
-
-		function isSharedLeaderboardConfigured() {
-			return SUPABASE_URL.startsWith("https://") &&
-				!SUPABASE_URL.includes("YOUR_PROJECT_ID") &&
-				SUPABASE_ANON_KEY &&
-				!SUPABASE_ANON_KEY.includes("YOUR_SUPABASE_ANON_KEY");
-		}
-
-		function getSupabaseHeaders(prefer = "") {
-			const headers = {
-				apikey: SUPABASE_ANON_KEY,
-				Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-				"Content-Type": "application/json",
-			};
-			if (prefer) headers.Prefer = prefer;
-			return headers;
-		}
-
-		async function saveOnlineScore() {
-			if (!isSharedLeaderboardConfigured() || !currentUsername) return;
-			clearTimeout(onlineSaveTimer);
-			onlineSaveTimer = null;
-			const response = await fetch(`${SUPABASE_URL}/rest/v1/clicker_leaderboard?on_conflict=username_key`, {
-				method: "POST",
-				headers: getSupabaseHeaders("resolution=merge-duplicates,return=minimal"),
-				body: JSON.stringify({
-					username_key: currentUsername.toLowerCase(),
-					username: currentUsername,
-					score: Math.floor(score),
-					rebirths: rebirthCount,
-					updated_at: new Date().toISOString(),
-				}),
-			});
-			if (!response.ok) throw new Error(`Online score save failed (${response.status}).`);
-		}
-
-		function scheduleOnlineSave() {
-			if (!isSharedLeaderboardConfigured() || !currentUsername) return;
-			clearTimeout(onlineSaveTimer);
-			onlineSaveTimer = setTimeout(() => {
-				saveOnlineScore().catch((error) => console.error(error));
-			}, 1000);
-		}
-
-		async function loadOnlineLeaderboard() {
-			const url = `${SUPABASE_URL}/rest/v1/clicker_leaderboard?select=username,score,rebirths&order=rebirths.desc,score.desc&limit=100`;
-			const response = await fetch(url, { headers: getSupabaseHeaders() });
-			if (!response.ok) throw new Error(`Online leaderboard load failed (${response.status}).`);
-			return response.json();
-		}
-
-		function saveGame() {
-			if (!currentUsername) return;
-
-			try {
-				const playerKey = currentUsername.toLowerCase();
-				lastSeenAt = Date.now();
-				const weeklyScore = Number(players[playerKey]?.state?.weeklyScore || 0);
-				const currentWeekKey = getCurrentWeekKey();
-				const savedWeekly = players[playerKey]?.state?.weeklyKey === currentWeekKey ? Math.max(weeklyScore, Math.floor(score)) : Math.floor(score);
-				players[playerKey] = {
-					username: currentUsername,
-					score,
-					rebirths: rebirthCount,
-					state: {
-						score,
-						clickPower,
-						autoClick,
-						cursorLevel,
-						autoLevel,
-						workerLevel,
-						clickBoostLevel,
-						goldenClickLevel,
-						cursorCost,
-						autoCost,
-						offlineClick,
-						offlineCost,
-						workerCost,
-						clickBoostCost,
-						goldenClickCost,
-						rebirthCount,
-						streakDays,
-						lastLoginDate,
-						lastWheelAt,
-						challenges: challengeState || getDefaultChallengeState(),
-						unlockedAreas,
-						currentAreaId,
-						lastSeenAt,
-						weeklyScore: savedWeekly,
-						weeklyKey: currentWeekKey,
-						achievements: players[playerKey]?.state?.achievements || {},
-						totalClicks: (players[playerKey]?.state?.totalClicks || 0) + Math.max(0, Math.floor(score) - Math.floor(players[playerKey]?.state?.score || 0))
-					}
-				};
-				localStorage.setItem(PLAYERS_STORAGE_KEY, JSON.stringify(players));
-			} catch (error) {
-				console.warn("Failed to save game:", error);
-			}
-			scheduleOnlineSave();
-		}
-
-		function getDailyLoginReward() {
-			const todayKey = new Date().toISOString().slice(0, 10);
-			if (!lastLoginDate) {
-				streakDays = 1;
-				lastLoginDate = todayKey;
-				return Math.max(250, streakDays * 250 + (streakDays - 1) * 150);
-			}
-
-			if (lastLoginDate === todayKey) {
-				return 0;
-			}
-
-			const previousDate = new Date(`${lastLoginDate}T00:00:00Z`);
-			const currentDate = new Date(`${todayKey}T00:00:00Z`);
-			const daysSinceLastLogin = Math.round((currentDate - previousDate) / 86400000);
-			if (daysSinceLastLogin === 1) {
-				streakDays += 1;
-			} else {
-				streakDays = 1;
-			}
-			lastLoginDate = todayKey;
-			return Math.max(250, streakDays * 250 + (streakDays - 1) * 150);
-		}
-
-		function startGame(username) {
-			const normalizedUsername = normalizeUsername(username);
-			if (!normalizedUsername) {
-				loginError.textContent = "Please enter a username.";
-				return;
-			}
-
-			const playerKey = getUsernameKey(normalizedUsername);
-			let player = players[playerKey];
-			if (!player && isUsernameTaken(normalizedUsername, currentUsername)) {
-				loginError.textContent = "That username is already taken. Please choose another one.";
-				return;
-			}
-			if (!player) {
-				let initialState = getDefaultState();
-				if (Object.keys(players).length === 0) {
-					try {
-						const previousSave = JSON.parse(localStorage.getItem(STORAGE_KEY));
-						if (previousSave) initialState = { ...initialState, ...previousSave };
-					} catch (error) {
-						console.warn("Failed to migrate previous save:", error);
-					}
-				}
-				player = { username: normalizedUsername, score: initialState.score, state: initialState };
-				players[playerKey] = player;
-			}
-
-			currentUsername = player.username;
-			try {
-				localStorage.setItem(ACTIVE_USERNAME_STORAGE_KEY, currentUsername);
-			} catch (error) {
-				console.warn("Failed to remember username:", error);
-			}
-			applyGameState(player.state || player);
-			const loginReward = getDailyLoginReward();
-			if (loginReward > 0) {
-				score += loginReward;
-				recordChallengePoints(loginReward);
-				offlineSummaryEl.hidden = false;
-				offlineSummaryEl.textContent = `Daily login streak: ${streakDays} day${streakDays === 1 ? "" : "s"}! +${new Intl.NumberFormat().format(loginReward)} points.`;
-			} else {
-				offlineSummaryEl.hidden = true;
-			}
-			const awaySeconds = Math.max(0, (Date.now() - lastSeenAt) / 1000);
-			const offlineEarnings = Math.floor(awaySeconds * offlineClick * getEarningMultiplier());
-			score += offlineEarnings;
-			recordChallengePoints(offlineEarnings);
-			if (offlineEarnings > 0) {
-				offlineSummaryEl.hidden = false;
-				offlineSummaryEl.textContent = `Welcome back! Your Offline Clicker earned ${new Intl.NumberFormat().format(offlineEarnings)} points.`;
-			}
-			playerNameEl.textContent = currentUsername;
-			loginError.textContent = "";
-			loginOverlay.hidden = true;
-			updateUI();
-			clickButton.focus();
-		}
-
-		function renderLeaderboard(entries = Object.values(players)) {
-			leaderboardRows.replaceChildren();
-			const sortedPlayers = entries
-				.filter((player) => player && typeof player.username === "string")
-				.sort((first, second) => Number(second.rebirths || 0) - Number(first.rebirths || 0) || Number(second.score || 0) - Number(first.score || 0) || first.username.localeCompare(second.username))
-				.slice(0, 100);
-
-			if (sortedPlayers.length === 0) {
-				const row = document.createElement("tr");
-				const cell = document.createElement("td");
-				cell.colSpan = 4;
-				cell.className = "leaderboard-empty";
-				cell.textContent = "No players yet.";
-				row.append(cell);
-				leaderboardRows.append(row);
-				return;
-			}
-
-			sortedPlayers.forEach((player, index) => {
-				const row = document.createElement("tr");
-				const rankCell = document.createElement("td");
-				const usernameCell = document.createElement("td");
-				const scoreCell = document.createElement("td");
-				rankCell.textContent = String(index + 1);
-				usernameCell.textContent = player.username;
-				const rebirthCell = document.createElement("td");
-				rebirthCell.textContent = String(Number(player.rebirths) || 0);
-				scoreCell.textContent = new Intl.NumberFormat().format(Math.floor(Number(player.score) || 0));
-				row.append(rankCell, usernameCell, rebirthCell, scoreCell);
-				leaderboardRows.append(row);
-			});
-		}
-
-		function getWeeklyLeaderboardEntries() {
-			const currentWeek = getCurrentWeekKey();
-			return Object.values(players)
-				.map((player) => {
-					const state = player?.state || {};
-					const weeklyScore = state.weeklyKey === currentWeek ? Number(state.weeklyScore || 0) : 0;
-					return {
-						username: player?.username || "",
-						score: weeklyScore,
-						rebirths: Number(state.rebirthCount || 0),
-					};
-				})
-				.filter((player) => player.username && player.score > 0);
-		}
-
-		async function showLeaderboard() {
-			saveGame();
-			leaderboardOverlay.hidden = false;
-			document.getElementById("closeLeaderboard").focus();
-			const weeklyEntries = getWeeklyLeaderboardEntries();
-			leaderboardStatus.textContent = "Top players this week.";
-			renderLeaderboard(weeklyEntries.length > 0 ? weeklyEntries : Object.values(players));
-			if (!isSharedLeaderboardConfigured()) return;
-
-			leaderboardStatus.textContent = "Loading shared leaderboard...";
-			try {
-				await saveOnlineScore();
-				const onlinePlayers = await loadOnlineLeaderboard();
-				leaderboardStatus.textContent = "Shared online leaderboard: top 100 players.";
-				renderLeaderboard(onlinePlayers);
-			} catch (error) {
-				console.error(error);
-				leaderboardStatus.textContent = "Could not load online scores. Showing scores saved in this browser.";
-				renderLeaderboard(weeklyEntries.length > 0 ? weeklyEntries : Object.values(players));
-			}
-		}
-
-		const gameCheats = {
-			givePoints(amount = 1000) {
-				const points = Number(amount) || 0;
-				score += points;
-				recordChallengePoints(points);
-				updateUI();
-				return score;
-			},
-			setScore(value = 0) {
-				const newScore = Number(value) || 0;
-				recordChallengePoints(newScore - score);
-				score = newScore;
-				updateUI();
-				return score;
-			},
-			buyCursorFast(amount = 1) {
-				let purchased = 0;
-				for (let i = 0; i < Number(amount) || 0; i++) {
-					if (score >= cursorCost) {
-						score -= cursorCost;
-						cursorLevel += 1;
-						clickPower += 1;
-						cursorCost = Math.floor(cursorCost * 1.7);
-						purchased += 1;
-					} else {
-						break;
-					}
-				}
-				updateUI();
-				return { purchased, cursorLevel, clickPower, cursorCost };
-			},
-			buyAutoFast(amount = 1) {
-				let purchased = 0;
-				for (let i = 0; i < Number(amount) || 0; i++) {
-					if (score >= autoCost) {
-						score -= autoCost;
-						autoLevel += 1;
-						autoClick += 1;
-						autoCost = Math.floor(autoCost * 1.9);
-						purchased += 1;
-					} else {
-						break;
-					}
-				}
-				updateUI();
-				return { purchased, autoLevel, autoClick, autoCost };
-			},
-			resetWheelCooldown() {
-				lastWheelAt = 0;
-				updateUI();
-				return "Prize wheel cooldown reset. You can spin again.";
-			},
-			help() {
-				console.log("Commands: game.givePoints(1000), game.setScore(5000), game.buyCursorFast(3), game.buyAutoFast(2), game.resetWheelCooldown(), game.help()");
-				return "Commands: game.givePoints(1000), game.setScore(5000), game.buyCursorFast(3), game.buyAutoFast(2), game.resetWheelCooldown(), game.help()";
-			}
-		};
-
-		window.game = gameCheats;
-		window.givePoints = gameCheats.givePoints;
-		window.setScore = gameCheats.setScore;
-
-		let rushHourBannerTimeout = null;
-		let rushHourWasActive = isRushHourActive();
-
-		function showRushHourBanner(message = "Rush Hour!") {
-			// Rush Hour remains a silent event: the multiplier is active without
-			// intrusive start/end banners on-screen.
-			const banner = document.getElementById("rushHourBanner");
-			if (!banner) return;
-			banner.classList.remove("visible");
-			clearTimeout(rushHourBannerTimeout);
-			rushHourBannerTimeout = null;
-		}
-
-		function getCurrentAchievements() {
-			const state = players[currentUsername.toLowerCase()]?.state || {};
-			return state.achievements || {};
-		}
-
-		function renderAchievements() {
-			const current = getCurrentAchievements();
-			achievementList.replaceChildren();
-			ACHIEVEMENTS.forEach((achievement) => {
-				const item = document.createElement("div");
-				item.className = `achievement-item ${current[achievement.id] ? "unlocked" : ""}`;
-				const title = document.createElement("h3");
-				title.textContent = current[achievement.id] ? `✅ ${achievement.title}` : achievement.title;
-				const description = document.createElement("p");
-				description.textContent = achievement.description;
-				item.append(title, description);
-				achievementList.append(item);
-			});
-		}
-
-		function unlockAchievements() {
-			if (!currentUsername) return;
-			const playerKey = currentUsername.toLowerCase();
-			const state = players[playerKey]?.state || {};
-			const unlocked = { ...(state.achievements || {}) };
-			ACHIEVEMENTS.forEach((achievement) => {
-				if (!unlocked[achievement.id] && achievement.requirement({
-					score,
-					autoClick,
-					workerLevel,
-					rebirthCount,
-					streakDays,
-					totalClicks: state.totalClicks || 0,
-				})) {
-					unlocked[achievement.id] = true;
-				}
-			});
-			if (players[playerKey]) {
-				players[playerKey].state.achievements = unlocked;
-			}
-			renderAchievements();
-		}
-
-		function updateUI() {
-			scoreEl.textContent = Math.floor(score);
-			autoScoreEl.textContent = Math.floor(autoClick * getEarningMultiplier());
-			showRushHourBanner();
-			unlockAchievements();
-
-			cursorCostEl.textContent = cursorCost;
-			autoCostEl.textContent = autoCost;
-			offlineCostEl.textContent = offlineCost;
-			workerCostEl.textContent = workerCost;
-			boostCostEl.textContent = clickBoostCost;
-			goldenCostEl.textContent = goldenClickCost;
-			offlineRateEl.textContent = Math.floor(offlineClick * getEarningMultiplier());
-			rebirthCostEl.textContent = new Intl.NumberFormat().format(getRebirthCost());
-			streakCountEl.textContent = streakDays;
-			rebirthCountEl.textContent = rebirthCount;
-			rebirthMultiplierEl.textContent = `x${getEarningMultiplier()}`;
-
-			buyCursorBtn.disabled = score < cursorCost;
-			buyAutoBtn.disabled = score < autoCost;
-			buyOfflineBtn.disabled = score < offlineCost;
-			buyWorkerBtn.disabled = score < workerCost;
-			buyBoostBtn.disabled = score < clickBoostCost;
-			buyGoldenBtn.disabled = score < goldenClickCost;
-			buyRebirthBtn.disabled = score < getRebirthCost();
-			renderWheelCooldown();
-			renderChallenges();
-			renderAreas();
-			if (currentUsername) saveGame();
-		}
-
-		function addScore(amount) {
-			score += amount;
-			recordChallengePoints(amount);
-			updateUI();
-		}
-
-		function clickAction() {
-			if (!currentUsername) return;
-			const baseGain = clickPower * getEarningMultiplier();
-			const goldenBurst = goldenClickLevel > 0 && Math.random() < Math.min(0.5, goldenClickLevel * 0.08);
-			const gain = goldenBurst ? baseGain * (1 + goldenClickLevel * 0.5) : baseGain;
-			recordChallengeClick();
-			addScore(gain);
-		}
-
-		function buyWorkerUpgrade() {
-			if (!currentUsername || score < workerCost) return;
-			score -= workerCost;
-			workerLevel += 1;
-			autoClick += 5;
-			workerCost = Math.floor(workerCost * 1.65);
-			updateUI();
-		}
-
-		function buyClickBoost() {
-			if (!currentUsername || score < clickBoostCost) return;
-			score -= clickBoostCost;
-			clickBoostLevel += 1;
-			clickBoostCost = Math.floor(clickBoostCost * 1.7);
-			updateUI();
-		}
-
-		function buyGoldenClick() {
-			if (!currentUsername || score < goldenClickCost) return;
-			score -= goldenClickCost;
-			goldenClickLevel += 1;
-			goldenClickCost = Math.floor(goldenClickCost * 1.8);
-			updateUI();
-		}
-
-		function performRebirth() {
-			if (!currentUsername || score < getRebirthCost()) return;
-			const confirmed = window.confirm(`Rebirth now? This resets your points, Cursor upgrades, Auto Clickers, Worker Crew, Points Boosts, Golden Click bonuses, Offline Clickers, and unlocked areas. Your rebirth count increases and your permanent earnings multiplier becomes x${getEarningMultiplier() + 1}.`);
-			if (!confirmed) return;
-
-			score = 0;
-			clickPower = 1;
-			autoClick = 0;
-			cursorLevel = 0;
-			autoLevel = 0;
-			workerLevel = 0;
-			clickBoostLevel = 0;
-			goldenClickLevel = 0;
-			cursorCost = 15;
-			autoCost = 25;
-			offlineClick = 0;
-			offlineCost = 100;
-			workerCost = 300;
-			clickBoostCost = 500;
-			goldenClickCost = 800;
-			rebirthCount += 1;
-			unlockedAreas = [BASE_AREA_ID];
-			currentAreaId = BASE_AREA_ID;
-			updateUI();
-		}
-
-		function deleteAllProgress() {
-			if (!currentUsername || !window.confirm("Are you sure you want to delete everything?")) return;
-
-			const playerKey = currentUsername.toLowerCase();
-			refreshChallengePeriods();
-			const preservedChallenges = { ...challengeState };
-			const preservedStreakDays = streakDays;
-			const preservedLastLoginDate = lastLoginDate;
-			const resetState = {
-				...getDefaultState(),
-				challenges: preservedChallenges,
-				streakDays: preservedStreakDays,
-				lastLoginDate: preservedLastLoginDate,
-				weeklyScore: 0,
-				weeklyKey: getCurrentWeekKey(),
-				achievements: {},
-				totalClicks: 0,
-			};
-			applyGameState(resetState);
-			challengeState = resetState.challenges;
-			players[playerKey] = {
-				username: currentUsername,
-				score: 0,
-				rebirths: 0,
-				state: resetState,
-			};
-			offlineSummaryEl.hidden = true;
-			updateUI();
-		}
-
-		function executeGameCommand(commandText) {
-			const match = commandText.trim().match(/^(?:game\.)?(help|givePoints|setScore|buyCursorFast|buyAutoFast|resetWheelCooldown)\s*(?:\(([^()]*)\))?;?$/i);
-			if (!match) return "Unknown command. Try game.help().";
-			if (!currentUsername) return "Choose a username before using game commands.";
-
-			const commandName = Object.keys(gameCheats).find((name) => name.toLowerCase() === match[1].toLowerCase());
-			const args = match[2] && match[2].trim() ? [Number(match[2].trim())] : [];
-			if (!commandName || args.some((argument) => !Number.isFinite(argument))) {
-				return "Invalid command or number. Try game.help().";
-			}
-
-			const result = gameCheats[commandName](...args);
-			return typeof result === "string" ? result : JSON.stringify(result);
-		}
-
-		clickButton.addEventListener("click", clickAction);
-		clickButton.addEventListener("pointerdown", (event) => {
-			event.preventDefault();
-			clickAction();
-		});
-
-		window.addEventListener("keydown", (event) => {
-			const typingTarget = event.target && (event.target.isContentEditable || ["INPUT", "TEXTAREA"].includes(event.target.tagName));
-			if (event.key === "/" && !typingTarget) {
-				event.preventDefault();
-				commandPanel.hidden = false;
-				commandInput.focus();
-				return;
-			}
-			if (event.key === "Escape" && !commandPanel.hidden) {
-				commandPanel.hidden = true;
-				clickButton.focus();
-				return;
-			}
-			if (event.code === "Space" && !event.repeat && !typingTarget) {
-				event.preventDefault();
-				clickAction();
-			}
-		});
-
-		commandForm.addEventListener("submit", (event) => {
-			event.preventDefault();
-			commandResult.textContent = executeGameCommand(commandInput.value);
-			commandInput.value = "";
-		});
-
-		document.getElementById("closeCommand").addEventListener("click", () => {
-			commandPanel.hidden = true;
-			clickButton.focus();
-		});
-
-		window.addEventListener("beforeunload", saveGame);
-
-		loginForm.addEventListener("submit", (event) => {
-			event.preventDefault();
-			const username = normalizeUsername(usernameInput.value);
-			if (!username) {
-				loginError.textContent = "Please enter a username.";
-				return;
-			}
-			const playerKey = getUsernameKey(username);
-			if (!players[playerKey] && isUsernameTaken(username, currentUsername)) {
-				loginError.textContent = "That username is already taken. Please choose another one.";
-				return;
-			}
-			startGame(username);
-		});
-
-		document.getElementById("changePlayer").addEventListener("click", () => {
-			saveGame();
-			currentUsername = "";
-			usernameInput.value = "";
-			loginOverlay.hidden = false;
-			usernameInput.focus();
-		});
-
-		document.getElementById("deleteProgress").addEventListener("click", deleteAllProgress);
-
-		toggleShopBtn.addEventListener("click", () => {
-			shopEl.hidden = !shopEl.hidden;
-			toggleShopBtn.setAttribute("aria-expanded", String(!shopEl.hidden));
-			if (!shopEl.hidden) buyCursorBtn.focus();
-		});
-
-		document.getElementById("openLeaderboard").addEventListener("click", showLeaderboard);
-		document.getElementById("openAchievements").addEventListener("click", () => {
-			renderAchievements();
-			achievementsOverlay.hidden = false;
-		});
-
-		document.getElementById("openWheel").addEventListener("click", () => {
-			wheelOverlay.hidden = false;
-			renderWheelCooldown();
-			document.getElementById("spinWheel").focus();
-		});
-
-		document.getElementById("openDailyChallenge").addEventListener("click", () => {
-			renderChallenges();
-			dailyChallengeOverlay.hidden = false;
-			claimDailyChallengeBtn.focus();
-		});
-
-		document.getElementById("openWeeklyChallenge").addEventListener("click", () => {
-			renderChallenges();
-			weeklyChallengeOverlay.hidden = false;
-			claimWeeklyChallengeBtn.focus();
-		});
-
-		document.getElementById("openAreas").addEventListener("click", () => {
-			renderAreas();
-			areasOverlay.hidden = false;
-			document.getElementById("closeAreas").focus();
-		});
-
-		document.getElementById("closeAreas").addEventListener("click", () => {
-			areasOverlay.hidden = true;
-			document.getElementById("openAreas").focus();
-		});
-
-		areaList.addEventListener("click", handleAreaAction);
-
-		document.getElementById("closeDailyChallenge").addEventListener("click", () => {
-			dailyChallengeOverlay.hidden = true;
-			document.getElementById("openDailyChallenge").focus();
-		});
-
-		document.getElementById("closeWeeklyChallenge").addEventListener("click", () => {
-			weeklyChallengeOverlay.hidden = true;
-			document.getElementById("openWeeklyChallenge").focus();
-		});
-
-		claimDailyChallengeBtn.addEventListener("click", () => claimChallenge("daily"));
-		claimWeeklyChallengeBtn.addEventListener("click", () => claimChallenge("weekly"));
-
-		document.getElementById("closeWheel").addEventListener("click", () => {
-			wheelOverlay.hidden = true;
-			document.getElementById("openWheel").focus();
-		});
-
-		spinWheelBtn.addEventListener("click", spinPrizeWheel);
-
-		document.getElementById("closeLeaderboard").addEventListener("click", () => {
-			leaderboardOverlay.hidden = true;
-			document.getElementById("openLeaderboard").focus();
-		});
-
-		document.getElementById("closeAchievements").addEventListener("click", () => {
-			achievementsOverlay.hidden = true;
-			document.getElementById("openAchievements").focus();
-		});
-
-		leaderboardOverlay.addEventListener("click", (event) => {
-			if (event.target === leaderboardOverlay) leaderboardOverlay.hidden = true;
-		});
-
-		buyCursorBtn.addEventListener("click", () => {
-			if (currentUsername && score >= cursorCost) {
-				score -= cursorCost;
-				cursorLevel += 1;
-				clickPower += 1;
-				cursorCost = Math.floor(cursorCost * 1.6);
-				updateUI();
-			}
-		});
-
-		buyAutoBtn.addEventListener("click", () => {
-			if (currentUsername && score >= autoCost) {
-				score -= autoCost;
-				autoLevel += 1;
-				autoClick += 1;
-				autoCost = Math.floor(autoCost * 1.8);
-				updateUI();
-			}
-		});
-
-		buyOfflineBtn.addEventListener("click", () => {
-			if (currentUsername && score >= offlineCost) {
-				score -= offlineCost;
-				offlineClick += 1;
-				offlineCost = Math.floor(offlineCost * 1.9);
-				updateUI();
-			}
-		});
-
-		buyWorkerBtn.addEventListener("click", buyWorkerUpgrade);
-		buyBoostBtn.addEventListener("click", buyClickBoost);
-		buyGoldenBtn.addEventListener("click", buyGoldenClick);
-		buyRebirthBtn.addEventListener("click", performRebirth);
-
-		setInterval(() => {
-			if (autoClick > 0) {
-				const autoEarnings = autoClick * getEarningMultiplier();
-				score += autoEarnings;
-				recordChallengePoints(autoEarnings);
-				updateUI();
-			}
-			refreshChallengePeriods();
-			renderChallenges();
-			renderWheelCooldown();
-			saveGame();
-		}, 1000);
-
-		drawPrizeWheel();
-		loadPlayers();
-		let rememberedUsername = "";
-		try {
-			rememberedUsername = localStorage.getItem(ACTIVE_USERNAME_STORAGE_KEY) || "";
-		} catch (error) {
-			console.warn("Failed to load remembered username:", error);
-		}
-		const rememberedPlayer = players[rememberedUsername.toLowerCase()];
-		if (rememberedPlayer && typeof rememberedPlayer.username === "string") {
-			startGame(rememberedPlayer.username);
-		} else {
-			updateUI();
-			usernameInput.focus();
 		}
 	</script>
 </body>
