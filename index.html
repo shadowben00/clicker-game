@@ -125,6 +125,25 @@
 			display: none;
 		}
 
+		.delete-progress-button {
+			position: fixed;
+			left: 16px;
+			bottom: 16px;
+			z-index: 4;
+			border: 1px solid #fca5a5;
+			border-radius: 8px;
+			padding: 10px 14px;
+			background: #991b1b;
+			color: #fff;
+			font: inherit;
+			font-weight: 700;
+			cursor: pointer;
+		}
+
+		.delete-progress-button:hover {
+			background: #b91c1c;
+		}
+
 		.command-form {
 			display: flex;
 			gap: 8px;
@@ -649,6 +668,7 @@
 			</div>
 		</div>
 	</div>
+	<button id="deleteProgress" class="delete-progress-button" type="button">Delete All Progress</button>
 
 	<div id="loginOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
 		<section class="dialog">
@@ -1623,6 +1643,30 @@
 			updateUI();
 		}
 
+		function deleteAllProgress() {
+			if (!currentUsername || !window.confirm("Are you sure you want to delete everything?")) return;
+
+			const playerKey = currentUsername.toLowerCase();
+			const resetState = {
+				...getDefaultState(),
+				challenges: getDefaultChallengeState(),
+				weeklyScore: 0,
+				weeklyKey: getCurrentWeekKey(),
+				achievements: {},
+				totalClicks: 0,
+			};
+			applyGameState(resetState);
+			challengeState = resetState.challenges;
+			players[playerKey] = {
+				username: currentUsername,
+				score: 0,
+				rebirths: 0,
+				state: resetState,
+			};
+			offlineSummaryEl.hidden = true;
+			updateUI();
+		}
+
 		function executeGameCommand(commandText) {
 			const match = commandText.trim().match(/^(?:game\.)?(help|givePoints|setScore|buyCursorFast|buyAutoFast|resetWheelCooldown)\s*(?:\(([^()]*)\))?;?$/i);
 			if (!match) return "Unknown command. Try game.help().";
@@ -1698,6 +1742,8 @@
 			loginOverlay.hidden = false;
 			usernameInput.focus();
 		});
+
+		document.getElementById("deleteProgress").addEventListener("click", deleteAllProgress);
 
 		toggleShopBtn.addEventListener("click", () => {
 			shopEl.hidden = !shopEl.hidden;
