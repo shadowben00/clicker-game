@@ -404,6 +404,11 @@
 			</div>
 
 			<div class="score-box">
+				<span class="label">Streak</span>
+				<div id="streakCount" class="score">0</div>
+			</div>
+
+			<div class="score-box">
 				<span class="label">Rebirths</span>
 				<div id="rebirthCount" class="score">0</div>
 			</div>
@@ -452,6 +457,39 @@
 				<div class="shop-row">
 					<span class="cost" id="offlineCost">100</span>
 					<button class="buy-btn" id="buyOffline">Buy</button>
+				</div>
+			</div>
+
+			<div class="shop-item">
+				<div>
+					<h3>Worker Crew</h3>
+					<p>Hire extra workers to add +5 Auto Clicks per second each.</p>
+				</div>
+				<div class="shop-row">
+					<span class="cost" id="workerCost">300</span>
+					<button class="buy-btn" id="buyWorker">Buy</button>
+				</div>
+			</div>
+
+			<div class="shop-item">
+				<div>
+					<h3>Points Boost</h3>
+					<p>Boost all earning multipliers by +25% each purchase.</p>
+				</div>
+				<div class="shop-row">
+					<span class="cost" id="boostCost">500</span>
+					<button class="buy-btn" id="buyBoost">Buy</button>
+				</div>
+			</div>
+
+			<div class="shop-item">
+				<div>
+					<h3>Golden Click</h3>
+					<p>Each level gives a chance to trigger a huge x5 click burst.</p>
+				</div>
+				<div class="shop-row">
+					<span class="cost" id="goldenCost">800</span>
+					<button class="buy-btn" id="buyGolden">Buy</button>
 				</div>
 			</div>
 
@@ -511,13 +549,20 @@
 		const buyCursorBtn = document.getElementById("buyCursor");
 		const buyAutoBtn = document.getElementById("buyAuto");
 		const buyOfflineBtn = document.getElementById("buyOffline");
+		const buyWorkerBtn = document.getElementById("buyWorker");
+		const buyBoostBtn = document.getElementById("buyBoost");
+		const buyGoldenBtn = document.getElementById("buyGolden");
 		const buyRebirthBtn = document.getElementById("buyRebirth");
 
 		const cursorCostEl = document.getElementById("cursorCost");
 		const autoCostEl = document.getElementById("autoCost");
 		const offlineCostEl = document.getElementById("offlineCost");
+		const workerCostEl = document.getElementById("workerCost");
+		const boostCostEl = document.getElementById("boostCost");
+		const goldenCostEl = document.getElementById("goldenCost");
 		const offlineRateEl = document.getElementById("offlineRate");
 		const rebirthCostEl = document.getElementById("rebirthCost");
+		const streakCountEl = document.getElementById("streakCount");
 		const rebirthCountEl = document.getElementById("rebirthCount");
 		const rebirthMultiplierEl = document.getElementById("rebirthMultiplier");
 		const playerNameEl = document.getElementById("playerName");
@@ -542,12 +587,20 @@
 
 		let cursorLevel = 0;
 		let autoLevel = 0;
+		let workerLevel = 0;
+		let clickBoostLevel = 0;
+		let goldenClickLevel = 0;
 
 		let cursorCost = 15;
 		let autoCost = 25;
 		let offlineClick = 0;
 		let offlineCost = 100;
+		let workerCost = 300;
+		let clickBoostCost = 500;
+		let goldenClickCost = 800;
 		let rebirthCount = 0;
+		let streakDays = 0;
+		let lastLoginDate = "";
 		let lastSeenAt = Date.now();
 		let currentUsername = "";
 		let players = {};
@@ -568,11 +621,19 @@
 				autoClick: 0,
 				cursorLevel: 0,
 				autoLevel: 0,
+				workerLevel: 0,
+				clickBoostLevel: 0,
+				goldenClickLevel: 0,
 				cursorCost: 15,
 				autoCost: 25,
 				offlineClick: 0,
 				offlineCost: 100,
+				workerCost: 300,
+				clickBoostCost: 500,
+				goldenClickCost: 800,
 				rebirthCount: 0,
+				streakDays: 0,
+				lastLoginDate: "",
 				lastSeenAt: Date.now(),
 			};
 		}
@@ -585,16 +646,24 @@
 			autoClick = valueOrDefault(savedData.autoClick, defaults.autoClick);
 			cursorLevel = valueOrDefault(savedData.cursorLevel, defaults.cursorLevel);
 			autoLevel = valueOrDefault(savedData.autoLevel, defaults.autoLevel);
+			workerLevel = valueOrDefault(savedData.workerLevel, defaults.workerLevel);
+			clickBoostLevel = valueOrDefault(savedData.clickBoostLevel, defaults.clickBoostLevel);
+			goldenClickLevel = valueOrDefault(savedData.goldenClickLevel, defaults.goldenClickLevel);
 			cursorCost = valueOrDefault(savedData.cursorCost, defaults.cursorCost);
 			autoCost = valueOrDefault(savedData.autoCost, defaults.autoCost);
 			offlineClick = valueOrDefault(savedData.offlineClick, defaults.offlineClick);
 			offlineCost = valueOrDefault(savedData.offlineCost, defaults.offlineCost);
+			workerCost = valueOrDefault(savedData.workerCost, defaults.workerCost);
+			clickBoostCost = valueOrDefault(savedData.clickBoostCost, defaults.clickBoostCost);
+			goldenClickCost = valueOrDefault(savedData.goldenClickCost, defaults.goldenClickCost);
 			rebirthCount = valueOrDefault(savedData.rebirthCount, defaults.rebirthCount);
+			streakDays = valueOrDefault(savedData.streakDays, defaults.streakDays);
+			lastLoginDate = typeof savedData.lastLoginDate === "string" ? savedData.lastLoginDate : defaults.lastLoginDate;
 			lastSeenAt = valueOrDefault(savedData.lastSeenAt, Date.now());
 		}
 
 		function getEarningMultiplier() {
-			return rebirthCount + 1;
+			return (rebirthCount + 1) * (1 + clickBoostLevel * 0.25 + workerLevel * 0.12);
 		}
 
 		function getRebirthCost() {
@@ -691,16 +760,24 @@
 					score,
 					rebirths: rebirthCount,
 					state: {
-					score,
-					clickPower,
-					autoClick,
-					cursorLevel,
-					autoLevel,
-					cursorCost,
-					autoCost,
+						score,
+						clickPower,
+						autoClick,
+						cursorLevel,
+						autoLevel,
+						workerLevel,
+						clickBoostLevel,
+						goldenClickLevel,
+						cursorCost,
+						autoCost,
 						offlineClick,
 						offlineCost,
+						workerCost,
+						clickBoostCost,
+						goldenClickCost,
 						rebirthCount,
+						streakDays,
+						lastLoginDate,
 						lastSeenAt,
 					}
 				};
@@ -709,6 +786,30 @@
 				console.warn("Failed to save game:", error);
 			}
 			scheduleOnlineSave();
+		}
+
+		function getDailyLoginReward() {
+			const todayKey = new Date().toISOString().slice(0, 10);
+			if (!lastLoginDate) {
+				streakDays = 1;
+				lastLoginDate = todayKey;
+				return Math.max(250, streakDays * 250 + (streakDays - 1) * 150);
+			}
+
+			if (lastLoginDate === todayKey) {
+				return 0;
+			}
+
+			const previousDate = new Date(`${lastLoginDate}T00:00:00Z`);
+			const currentDate = new Date(`${todayKey}T00:00:00Z`);
+			const daysSinceLastLogin = Math.round((currentDate - previousDate) / 86400000);
+			if (daysSinceLastLogin === 1) {
+				streakDays += 1;
+			} else {
+				streakDays = 1;
+			}
+			lastLoginDate = todayKey;
+			return Math.max(250, streakDays * 250 + (streakDays - 1) * 150);
 		}
 
 		function startGame(username) {
@@ -745,11 +846,19 @@
 				console.warn("Failed to remember username:", error);
 			}
 			applyGameState(player.state || player);
+			const loginReward = getDailyLoginReward();
+			if (loginReward > 0) {
+				score += loginReward;
+				offlineSummaryEl.hidden = false;
+				offlineSummaryEl.textContent = `Daily login streak: ${streakDays} day${streakDays === 1 ? "" : "s"}! +${new Intl.NumberFormat().format(loginReward)} points.`;
+			} else {
+				offlineSummaryEl.hidden = true;
+			}
 			const awaySeconds = Math.max(0, (Date.now() - lastSeenAt) / 1000);
 			const offlineEarnings = Math.floor(awaySeconds * offlineClick * getEarningMultiplier());
 			score += offlineEarnings;
-			offlineSummaryEl.hidden = offlineEarnings === 0;
 			if (offlineEarnings > 0) {
+				offlineSummaryEl.hidden = false;
 				offlineSummaryEl.textContent = `Welcome back! Your Offline Clicker earned ${new Intl.NumberFormat().format(offlineEarnings)} points.`;
 			}
 			playerNameEl.textContent = currentUsername;
@@ -870,19 +979,26 @@
 
 		function updateUI() {
 			scoreEl.textContent = Math.floor(score);
-			autoScoreEl.textContent = autoClick * getEarningMultiplier();
+			autoScoreEl.textContent = Math.floor(autoClick * getEarningMultiplier());
 
 			cursorCostEl.textContent = cursorCost;
 			autoCostEl.textContent = autoCost;
 			offlineCostEl.textContent = offlineCost;
-			offlineRateEl.textContent = offlineClick * getEarningMultiplier();
+			workerCostEl.textContent = workerCost;
+			boostCostEl.textContent = clickBoostCost;
+			goldenCostEl.textContent = goldenClickCost;
+			offlineRateEl.textContent = Math.floor(offlineClick * getEarningMultiplier());
 			rebirthCostEl.textContent = new Intl.NumberFormat().format(getRebirthCost());
+			streakCountEl.textContent = streakDays;
 			rebirthCountEl.textContent = rebirthCount;
 			rebirthMultiplierEl.textContent = `x${getEarningMultiplier()}`;
 
 			buyCursorBtn.disabled = score < cursorCost;
 			buyAutoBtn.disabled = score < autoCost;
 			buyOfflineBtn.disabled = score < offlineCost;
+			buyWorkerBtn.disabled = score < workerCost;
+			buyBoostBtn.disabled = score < clickBoostCost;
+			buyGoldenBtn.disabled = score < goldenClickCost;
 			buyRebirthBtn.disabled = score < getRebirthCost();
 			if (currentUsername) saveGame();
 		}
@@ -894,12 +1010,40 @@
 
 		function clickAction() {
 			if (!currentUsername) return;
-			addScore(clickPower * getEarningMultiplier());
+			const baseGain = clickPower * getEarningMultiplier();
+			const goldenBurst = goldenClickLevel > 0 && Math.random() < Math.min(0.5, goldenClickLevel * 0.08);
+			const gain = goldenBurst ? baseGain * (1 + goldenClickLevel * 0.5) : baseGain;
+			addScore(gain);
+		}
+
+		function buyWorkerUpgrade() {
+			if (!currentUsername || score < workerCost) return;
+			score -= workerCost;
+			workerLevel += 1;
+			autoClick += 5;
+			workerCost = Math.floor(workerCost * 1.65);
+			updateUI();
+		}
+
+		function buyClickBoost() {
+			if (!currentUsername || score < clickBoostCost) return;
+			score -= clickBoostCost;
+			clickBoostLevel += 1;
+			clickBoostCost = Math.floor(clickBoostCost * 1.7);
+			updateUI();
+		}
+
+		function buyGoldenClick() {
+			if (!currentUsername || score < goldenClickCost) return;
+			score -= goldenClickCost;
+			goldenClickLevel += 1;
+			goldenClickCost = Math.floor(goldenClickCost * 1.8);
+			updateUI();
 		}
 
 		function performRebirth() {
 			if (!currentUsername || score < getRebirthCost()) return;
-			const confirmed = window.confirm(`Rebirth now? This resets your points, Cursor upgrades, Auto Clickers, and Offline Clickers. Your rebirth count increases and your permanent earnings multiplier becomes x${getEarningMultiplier() + 1}.`);
+			const confirmed = window.confirm(`Rebirth now? This resets your points, Cursor upgrades, Auto Clickers, Worker Crew, Points Boosts, Golden Click bonuses, and Offline Clickers. Your rebirth count increases and your permanent earnings multiplier becomes x${getEarningMultiplier() + 1}.`);
 			if (!confirmed) return;
 
 			score = 0;
@@ -907,10 +1051,16 @@
 			autoClick = 0;
 			cursorLevel = 0;
 			autoLevel = 0;
+			workerLevel = 0;
+			clickBoostLevel = 0;
+			goldenClickLevel = 0;
 			cursorCost = 15;
 			autoCost = 25;
 			offlineClick = 0;
 			offlineCost = 100;
+			workerCost = 300;
+			clickBoostCost = 500;
+			goldenClickCost = 800;
 			rebirthCount += 1;
 			updateUI();
 		}
@@ -1037,6 +1187,9 @@
 			}
 		});
 
+		buyWorkerBtn.addEventListener("click", buyWorkerUpgrade);
+		buyBoostBtn.addEventListener("click", buyClickBoost);
+		buyGoldenBtn.addEventListener("click", buyGoldenClick);
 		buyRebirthBtn.addEventListener("click", performRebirth);
 
 		setInterval(() => {
